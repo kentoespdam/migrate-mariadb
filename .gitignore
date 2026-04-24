@@ -1,0 +1,5 @@
+config.yaml
+.mariasync/
+vendor/
+*.log
+checkpoint.json
