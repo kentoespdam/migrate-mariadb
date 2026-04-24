@@ -20,6 +20,7 @@ type Table struct {
 
 // SchemaSnapshot contains the metadata discovered for a database.
 type SchemaSnapshot struct {
-	Database string
-	Tables   map[string]Table // key = table name
+	Database         string
+	MaxAllowedPacket int64            // session variable max_allowed_packet
+	Tables           map[string]Table // key = table name
 }

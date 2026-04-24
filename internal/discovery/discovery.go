@@ -13,6 +13,12 @@ func Discover(ctx context.Context, db *sql.DB, database string) (*SchemaSnapshot
 		Tables:   make(map[string]Table),
 	}
 
+	// 0. Fetch server capability: max_allowed_packet
+	err := db.QueryRowContext(ctx, "SELECT @@max_allowed_packet").Scan(&snapshot.MaxAllowedPacket)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch max_allowed_packet: %w", err)
+	}
+
 	// 1. Fetch table metadata
 	tablesQuery := `
 		SELECT TABLE_NAME, TABLE_ROWS,

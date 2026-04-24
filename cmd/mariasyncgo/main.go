@@ -61,8 +61,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("✅ Sumber: %d tabel ditemukan.\n", len(snapA.Tables))
-	fmt.Printf("✅ Target: %d tabel ditemukan.\n", len(snapB.Tables))
+	fmt.Printf("✅ Sumber: %d tabel ditemukan (max_allowed_packet: %d MB).\n",
+		len(snapA.Tables), snapA.MaxAllowedPacket/1024/1024)
+	fmt.Printf("✅ Target: %d tabel ditemukan (max_allowed_packet: %d MB).\n",
+		len(snapB.Tables), snapB.MaxAllowedPacket/1024/1024)
 
 	// 4. Mapping Phase (Preview)
 	fmt.Println("\n📊 Preview Auto-Mapping:")

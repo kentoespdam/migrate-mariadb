@@ -1,0 +1,21 @@
+source:
+  host: "${DB_HOST_SRC:localhost}"
+  port: ${DB_PORT_SRC:3306}
+  user: "${DB_USER_SRC:root}"
+  password: "${DB_PASSWORD_SRC:}"
+  database: "${DB_DATABASE_SRC:smartoffice}"
+  charset: "utf8mb4"
+
+target:
+  host: "${DB_HOST_TGT:localhost}"
+  port: ${DB_PORT_TGT:3306}
+  user: "${DB_USER_TGT:root}"
+  password: "${DB_PASSWORD_TGT:}"
+  database: "${DB_DATABASE_TGT:smartoffice_mail}"
+  charset: "utf8mb4"
+
+migration:
+  batch_size: 1000
+  worker_count: 4
+  checkpoint_path: "./.mariasync/checkpoint.json"
+  log_path: "./.mariasync/run.log"
