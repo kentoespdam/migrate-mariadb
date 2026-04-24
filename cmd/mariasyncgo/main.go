@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"mariasyncgo/internal/config"
+	"mariasyncgo/internal/discovery"
+	"mariasyncgo/internal/mapping"
 
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -20,7 +23,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. Open Source DB
+	// 2. Open connections
 	dbA, err := sql.Open("mysql", cfg.Source.DSN())
 	if err != nil {
 		fmt.Printf("Gagal membuka koneksi ke Host Sumber: %v\n", err)
@@ -29,7 +32,6 @@ func main() {
 	defer dbA.Close()
 	configurePool(dbA, cfg.Migration)
 
-	// 3. Open Target DB
 	dbB, err := sql.Open("mysql", cfg.Target.DSN())
 	if err != nil {
 		fmt.Printf("Gagal membuka koneksi ke Host Target: %v\n", err)
@@ -38,23 +40,44 @@ func main() {
 	defer dbB.Close()
 	configurePool(dbB, cfg.Migration)
 
-	// 4. Ping health checks
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// 3. Discovery Phase
+	fmt.Println("🔎 Menjelajahi metadata database...")
+	g, gctx := errgroup.WithContext(context.Background())
 
-	if err := dbA.PingContext(ctx); err != nil {
-		fmt.Printf("Gagal terhubung ke Host Sumber (%s:%d): %v\n", cfg.Source.Host, cfg.Source.Port, err)
+	var snapA, snapB *discovery.SchemaSnapshot
+	g.Go(func() error {
+		var err error
+		snapA, err = discovery.Discover(gctx, dbA, cfg.Source.Database)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		snapB, err = discovery.Discover(gctx, dbB, cfg.Target.Database)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
+		fmt.Printf("Gagal discovery metadata: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := dbB.PingContext(ctx); err != nil {
-		fmt.Printf("Gagal terhubung ke Host Target (%s:%d): %v\n", cfg.Target.Host, cfg.Target.Port, err)
-		os.Exit(1)
+	fmt.Printf("✅ Sumber: %d tabel ditemukan.\n", len(snapA.Tables))
+	fmt.Printf("✅ Target: %d tabel ditemukan.\n", len(snapB.Tables))
+
+	// 4. Mapping Phase (Preview)
+	fmt.Println("\n📊 Preview Auto-Mapping:")
+	for name, srcTbl := range snapA.Tables {
+		if tgtTbl, exists := snapB.Tables[name]; exists {
+			plan := mapping.BuildAutoPlan(srcTbl, tgtTbl)
+			fmt.Printf(" - [%s] -> [%s]: %d kolom kolom terpetakan", srcTbl.Name, tgtTbl.Name, len(plan.Columns))
+			if len(plan.Warnings) > 0 {
+				fmt.Printf(" (%d peringatan)", len(plan.Warnings))
+			}
+			fmt.Println()
+		}
 	}
 
-	fmt.Println("Berhasil terhubung ke Host Sumber dan Host Target!")
-	fmt.Println("Memulai fase TUI...")
-	// TUI phase will be implemented in later steps
+	fmt.Println("\n🚀 Siap memulai migrasi (TUI implementation coming soon...)")
 }
 
 func configurePool(db *sql.DB, cfg config.MigrationConfig) {

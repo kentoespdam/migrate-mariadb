@@ -1,9 +1,11 @@
 module mariasyncgo
 
-go 1.22.2
+go 1.25.0
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/go-sql-driver/mysql v1.9.3 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/go-sql-driver/mysql v1.9.3
+	golang.org/x/sync v0.20.0
+	gopkg.in/yaml.v3 v3.0.1
 )
+
+require filippo.io/edwards25519 v1.1.0 // indirect
