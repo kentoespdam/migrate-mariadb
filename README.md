@@ -32,29 +32,45 @@ uv sync
 
 ### Configuration
 
-Create a `.env` file based on `.env.example`:
+The application requires two configuration files (or one combined `.env`). By default, it looks for `.env.source` and `.env.target`.
 
+#### 1. Source Host Configuration (`.env.source`)
+Create a file named `.env.source` with the following variables:
 ```env
-SOURCE_HOST=localhost
-SOURCE_USER=root
-SOURCE_PASS=your_password
-SOURCE_DB=source_db
-
-TARGET_HOST=remote_host
-TARGET_USER=root
-TARGET_PASS=remote_password
-TARGET_DB=target_db
-
-DRY_RUN=true
-BATCH_SIZE=5000
+SOURCE__HOST=127.0.0.1
+SOURCE__USER=root
+SOURCE__PASSWORD=your_password
+SOURCE__DATABASE=source_database
+SOURCE__PORT=3306
 ```
+
+#### 2. Target Host Configuration (`.env.target`)
+Create a file named `.env.target` with the following variables:
+```env
+TARGET__HOST=remote_host
+TARGET__USER=db_user
+TARGET__PASSWORD=db_password
+TARGET__DATABASE=target_database
+TARGET__PORT=3306
+```
+
+> [!NOTE]
+> You can also specify common settings like `DRY_RUN=true` and `BATCH_SIZE=5000` in either file or the main `.env`.
 
 ## 🛠️ Usage
 
-Simply run the application:
+### Running the App
+You can run the application using `uv` (recommended) or direct python command:
 
 ```bash
+# Default mode (looks for .env.source and .env.target)
 uv run pysync-maria
+
+# Specify custom config files
+uv run pysync-maria --source production.env --target backup.env
+
+# Enable Dry Run via CLI
+uv run pysync-maria --dry-run
 ```
 
 ### Keyboard Shortcuts

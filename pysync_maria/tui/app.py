@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from textual.app import App
+from textual.binding import Binding
 from typing import Optional
 from ..config.settings import AppSettings, HostConfig
 from .screens.connection_screen import ConnectionScreen

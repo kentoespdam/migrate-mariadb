@@ -172,8 +172,9 @@ ModalScreen {
     margin: 1 0;
     padding: 1;
     background: $surface-darken-1;
-    border: thin $secondary;
+    border: solid $secondary;
 }
+
 
 .confirm-warning {
     color: $error;

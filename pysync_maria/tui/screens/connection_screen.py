@@ -57,7 +57,7 @@ class ConnectionScreen(Screen):
     def test_connection(self, form: HostConnectionForm) -> None:
         """Test connection in a background thread."""
         status_label = form.query_one("#status", Label)
-        self.call_from_thread(status_label.update, "Status: ⏳ Connecting...")
+        self.app.call_from_thread(status_label.update, "Status: ⏳ Connecting...")
         
         try:
             # Update config from inputs
@@ -71,17 +71,17 @@ class ConnectionScreen(Screen):
             
             with get_connection(config) as conn:
                 version = "Connected" # We could fetch version if we want
-                self.call_from_thread(status_label.update, f"Status: ✅ {version}")
+                self.app.call_from_thread(status_label.update, f"Status: ✅ {version}")
                 # Save the validated config
                 if form.id == "source-form":
                     self.app.source_config = config
                 else:
                     self.app.target_config = config
             
-            self.check_all_ready()
+            self.app.call_from_thread(self.check_all_ready)
             
         except Exception as e:
-            self.call_from_thread(status_label.update, f"Status: ❌ {str(e)[:40]}...")
+            self.app.call_from_thread(status_label.update, f"Status: ❌ {str(e)[:40]}...")
 
     def check_all_ready(self) -> None:
         """Enable the Connect button if both connections are verified."""

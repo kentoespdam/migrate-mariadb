@@ -15,6 +15,7 @@ class HostConfig(BaseModel):
     password: SecretStr
     database: str
     charset: str = "utf8mb4"
+    collation: str = "utf8mb4_general_ci"
     connect_timeout: int = 10
 
 class AppSettings(BaseSettings):

@@ -22,6 +22,7 @@ def get_connection(config: HostConfig):
             password=config.password.get_secret_value(),
             database=config.database,
             charset=config.charset,
+            collation=config.collation,
             connect_timeout=config.connect_timeout,
             buffered=True
         )
@@ -54,6 +55,7 @@ def get_streaming_connection(config: HostConfig):
             password=config.password.get_secret_value(),
             database=config.database,
             charset=config.charset,
+            collation=config.collation,
             connect_timeout=config.connect_timeout,
             use_pure=True 
         )
