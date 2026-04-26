@@ -71,3 +71,72 @@ Input {
 #stats-label {
     width: 1fr;
 }
+
+.footer-label {
+    margin-right: 1;
+    content-align: left middle;
+}
+
+#write-mode-select {
+    width: 25;
+}
+
+/* Modals */
+ModalScreen {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+#modal-container {
+    padding: 1 2;
+    background: $surface;
+    border: thick $primary;
+    width: 80;
+    height: auto;
+    max-height: 30;
+}
+
+#modal-title {
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+    background: $primary;
+    color: $text;
+}
+
+.mapping-row {
+    height: 3;
+    margin: 0 1;
+}
+
+.column-name {
+    width: 30%;
+    content-align: left middle;
+}
+
+.arrow {
+    width: 5%;
+    content-align: center middle;
+}
+
+.target-select {
+    width: 65%;
+}
+
+.modal-buttons {
+    margin-top: 1;
+    content-align: right middle;
+}
+
+#confirm-summary {
+    margin: 1 0;
+    padding: 1;
+    background: $surface-darken-1;
+    border: thin $secondary;
+}
+
+.confirm-warning {
+    color: $error;
+    text-style: bold;
+    text-align: center;
+}

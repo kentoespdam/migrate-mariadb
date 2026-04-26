@@ -22,6 +22,7 @@ class ColumnInfo:
     column_default: Optional[str]
     extra: str
     ordinal_position: int
+    is_pk: bool = False
 
 @dataclass(frozen=True)
 class FKInfo:
@@ -78,31 +79,26 @@ def get_tables(conn, database: str) -> List[TableInfo]:
 @lru_cache(maxsize=512)
 def get_columns(conn, database: str, table: str) -> List[ColumnInfo]:
     """Fetch list of columns from information_schema.COLUMNS."""
-    columns = []
     query = """
-        SELECT 
-            COLUMN_NAME, 
-            DATA_TYPE, 
-            IS_NULLABLE, 
-            COLUMN_DEFAULT, 
-            EXTRA, 
-            ORDINAL_POSITION 
-        FROM information_schema.COLUMNS 
+        SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, ORDINAL_POSITION, COLUMN_KEY
+        FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
-        ORDER BY ORDINAL_POSITION ASC
+        ORDER BY ORDINAL_POSITION
     """
-    with conn.cursor(dictionary=True) as cursor:
+    with conn.cursor() as cursor:
         cursor.execute(query, (database, table))
-        for row in cursor.fetchall():
-            columns.append(ColumnInfo(
-                name=row['COLUMN_NAME'],
-                data_type=row['DATA_TYPE'],
-                is_nullable=row['IS_NULLABLE'] == 'YES',
-                column_default=row['COLUMN_DEFAULT'],
-                extra=row['EXTRA'],
-                ordinal_position=row['ORDINAL_POSITION']
+        cols = []
+        for (name, dtype, nullable, default, extra, pos, key) in cursor:
+            cols.append(ColumnInfo(
+                name=name,
+                data_type=dtype,
+                is_nullable=(nullable == "YES"),
+                column_default=default,
+                extra=extra,
+                ordinal_position=pos,
+                is_pk=(key == "PRI")
             ))
-    return columns
+    return cols
 
 @lru_cache(maxsize=128)
 def get_foreign_keys(conn, database: str) -> List[FKInfo]:

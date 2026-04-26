@@ -1,18 +1,22 @@
+from typing import Dict, List, Optional
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Header, Footer, DataTable, Label, Button
-from textual.containers import Container, Horizontal
 from textual import work
-from ...db.metadata import get_tables, get_columns, diff_columns, format_size
+from ...db.metadata import get_tables, get_columns, diff_columns, format_size, TableInfo, ColumnInfo
 from ...db.connection import get_connection
+from ..modals.mapping_modal import MappingModal
+from ..modals.confirm_modal import ConfirmModal
+from textual.widgets import Header, Footer, DataTable, Label, Button, Select
 
 class TableSelectScreen(Screen):
     """Screen for selecting tables to migrate."""
 
     def __init__(self):
         super().__init__()
-        self.tables_data = []
+        self.tables_data: list[TableInfo] = []
         self.selected_tables = set()
+        self.table_mappings = {} # table_name -> dict[source_col, target_col | None]
+        self.write_mode = "REPLACE"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -21,6 +25,12 @@ class TableSelectScreen(Screen):
         yield DataTable(id="table-list")
         
         with Horizontal(id="table-footer"):
+            yield Label("Write Mode:", classes="footer-label")
+            yield Select(
+                [("REPLACE INTO", "REPLACE"), ("ON DUPLICATE KEY UPDATE", "UPDATE"), ("INSERT IGNORE", "IGNORE")],
+                value="REPLACE",
+                id="write-mode-select"
+            )
             yield Label("Selected: 0 tables | Est. rows: 0", id="stats-label")
             yield Button("← Back", id="back-btn")
             yield Button("Start Migration →", variant="success", id="start-btn", disabled=True)
@@ -93,15 +103,98 @@ class TableSelectScreen(Screen):
         if event.button.id == "back-btn":
             self.app.pop_screen()
         elif event.button.id == "start-btn":
-            self.notify("Migration starting in Phase 5...")
+            self.open_confirmation()
+
+    def open_confirmation(self) -> None:
+        selected_table_infos = [t for t in self.tables_data if t.name in self.selected_tables]
+        
+        self.app.push_screen(
+            ConfirmModal(
+                tables=selected_table_infos,
+                source_db=self.app.source_config.database,
+                target_db=self.app.target_config.database,
+                mode=self.query_one("#write-mode-select", Select).value,
+                dry_run=self.app.settings.dry_run,
+                batch_size=self.app.settings.batch_size
+            ),
+            callback=self.handle_confirmation
+        )
+
+    def handle_confirmation(self, confirmed: bool) -> None:
+        if confirmed:
+            self.notify("Migration starting... (Phase 5)")
 
     BINDINGS = [
         ("space", "toggle_selection", "Toggle Selection"),
         ("a", "toggle_all", "Select All"),
+        ("m", "open_mapping", "Custom Mapping"),
+        ("r", "load_metadata", "Reload Statistics"),
     ]
+
+    def action_open_mapping(self) -> None:
+        """Open mapping modal for currently selected table."""
+        table_list = self.query_one("#table-list", DataTable)
+        if table_list.cursor_row is None:
+            return
+            
+        row_key = list(table_list.rows.keys())[table_list.cursor_row]
+        table_name = str(row_key.value)
+        
+        self.run_worker(self.fetch_and_open_mapping(table_name))
+
+    async def fetch_and_open_mapping(self, table_name: str) -> None:
+        """Fetch columns and open modal."""
+        try:
+            with get_connection(self.app.source_config) as s_conn:
+                s_cols = get_columns(s_conn, self.app.source_config.database, table_name)
+            with get_connection(self.app.target_config) as t_conn:
+                t_cols = get_columns(t_conn, self.app.target_config.database, table_name)
+            
+            self.app.push_screen(
+                MappingModal(
+                    table_name=table_name,
+                    source_cols=s_cols,
+                    target_cols=t_cols,
+                    current_mapping=self.table_mappings.get(table_name)
+                ),
+                callback=lambda mapping: self.save_mapping(table_name, mapping)
+            )
+        except Exception as e:
+            self.notify(f"Mapping fetch error: {e}", severity="error")
+
+    def save_mapping(self, table_name: str, mapping: Optional[Dict]) -> None:
+        if mapping:
+            self.table_mappings[table_name] = mapping
+            self.notify(f"Mapping saved for {table_name}")
+            # Update schema status in table
+            self.query_one("#table-list").update_cell(table_name, "Schema", "⚙️ Custom")
 
     def action_toggle_selection(self) -> None:
         table_list = self.query_one("#table-list", DataTable)
         if table_list.cursor_row is not None:
-             # Logic to toggle currently highlighted row
-             pass # Will implement more robustly if needed
+             row_key = list(table_list.rows.keys())[table_list.cursor_row]
+             self._toggle_row(row_key)
+
+    def action_toggle_all(self) -> None:
+        table_list = self.query_one("#table-list", DataTable)
+        all_keys = list(table_list.rows.keys())
+        if len(self.selected_tables) == len(all_keys):
+            self.selected_tables.clear()
+            for key in all_keys:
+                table_list.update_cell(key, "✓", "[ ]")
+        else:
+            for key in all_keys:
+                self.selected_tables.add(str(key.value))
+                table_list.update_cell(key, "✓", "[✓]")
+        self.update_stats()
+
+    def _toggle_row(self, row_key) -> None:
+        table_name = str(row_key.value)
+        table_list = self.query_one("#table-list", DataTable)
+        if table_name in self.selected_tables:
+            self.selected_tables.remove(table_name)
+            table_list.update_cell(row_key, "✓", "[ ]")
+        else:
+            self.selected_tables.add(table_name)
+            table_list.update_cell(row_key, "✓", "[✓]")
+        self.update_stats()
