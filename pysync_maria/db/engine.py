@@ -104,6 +104,17 @@ def write_batch(
     cursor.executemany(query, rows)
     return len(rows)
 
+def count_rows(conn: Any, table: str, where_clause: str | None = None) -> int:
+    """Exact row count. Use sparingly; cheaper than re-streaming."""
+    sql = f"SELECT COUNT(*) FROM `{table}`"
+    if where_clause:
+        sql += f" WHERE {where_clause}"
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        (n,) = cur.fetchone()
+    return int(n)
+
+
 def migrate_table(
     src_conn: Any,
     tgt_conn: Any,
@@ -211,9 +222,9 @@ def migrate_table(
         res.errors.append(f"Critical error: {e!s}")
         from ..logging_setup import log_exception
         log_exception(
-            logger, 
-            f"Critical error migrating {table}", 
-            e, 
+            logger,
+            f"Critical error migrating {table}",
+            e,
             table=table,
             batch_num=batch_num
         )

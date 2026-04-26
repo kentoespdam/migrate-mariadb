@@ -80,5 +80,51 @@ class TestEngine(unittest.TestCase):
         mock_target_conn.commit.assert_called_once()
         mock_source_conn.cursor.assert_called_with(buffered=False)
 
+    def test_migrate_table_progress_events(self):
+        mock_source_cursor = MagicMock()
+        # 5 rows total, batch size 2 -> should have 3 batches
+        mock_source_cursor.fetchmany.side_effect = [
+            [(1, "A"), (2, "B")],
+            [(3, "C"), (4, "D")],
+            [(5, "E")],
+            []
+        ]
+
+        mock_source_conn = MagicMock()
+        mock_source_conn.cursor.return_value = mock_source_cursor
+
+        mock_target_conn = MagicMock()
+        mock_target_cursor = MagicMock()
+        mock_target_conn.cursor.return_value.__enter__.return_value = mock_target_cursor
+
+        batches = []
+        res = migrate_table(
+            src_conn=mock_source_conn,
+            tgt_conn=mock_target_conn,
+            table="t1",
+            columns_a=["id", "name"],
+            column_map={"id": "id", "name": "name"},
+            batch_size=2,
+            on_batch_done=lambda b: batches.append(b)
+        )
+
+        self.assertEqual(len(batches), 3)
+        self.assertEqual(batches[0].rows_read, 2)
+        self.assertEqual(batches[1].rows_read, 2)
+        self.assertEqual(batches[2].rows_read, 1)
+        self.assertEqual(res.total_rows_read, 5)
+
+    def test_count_rows(self):
+        from pysync_maria.db.engine import count_rows
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (42,)
+
+        count = count_rows(mock_conn, "t1")
+
+        self.assertEqual(count, 42)
+        mock_cursor.execute.assert_called_with("SELECT COUNT(*) FROM `t1`")
+
 if __name__ == "__main__":
     unittest.main()

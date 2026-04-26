@@ -37,6 +37,7 @@ def get_connection(config: HostConfig):
         yield cnx
     except mysql.connector.Error as err:
         import logging
+
         from ..logging_setup import log_exception
         log_exception(
             logging.getLogger("pysync_maria.db.connection"),
@@ -54,11 +55,10 @@ def get_connection(config: HostConfig):
 @contextmanager
 def get_streaming_connection(config: HostConfig):
     """
-    Unbuffered streaming connection factory using SSCursor.
-    Required for large table data migration to avoid OOM.
+    Unbuffered streaming connection factory.
+    The engine owns the cursor lifecycle (AD-1).
     """
     cnx = None
-    cursor = None
     try:
         # use_pure=True is required for SSCursor in mysql-connector-python
         cnx = mysql.connector.connect(
@@ -77,12 +77,11 @@ def get_streaming_connection(config: HostConfig):
 
         cnx.ping(reconnect=True, attempts=3, delay=1)
 
-        cursor = cnx.cursor(buffered=False)
-
-        yield cnx, cursor
+        yield cnx
 
     except mysql.connector.Error as err:
         import logging
+
         from ..logging_setup import log_exception
         log_exception(
             logging.getLogger("pysync_maria.db.connection"),
@@ -94,9 +93,5 @@ def get_streaming_connection(config: HostConfig):
         )
         raise ConnectionError(f"MariaDB Streaming Error [{err.errno}]: {err.msg}") from err
     finally:
-        if cursor is not None:
-            import contextlib
-            with contextlib.suppress(mysql.connector.Error):
-                cursor.close()
         if cnx and cnx.is_connected():
             cnx.close()
