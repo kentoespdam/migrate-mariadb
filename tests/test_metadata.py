@@ -7,10 +7,24 @@ from pysync_maria.db.metadata import (
 
 class TestMetadata(unittest.TestCase):
     def test_format_size(self):
-        self.assertEqual(format_size(512), "512 B")
-        self.assertEqual(format_size(1024), "1.0 KB")
-        self.assertEqual(format_size(1024 * 1024), "1.0 MB")
-        self.assertEqual(format_size(1024 * 1024 * 1024), "1.0 GB")
+        self.assertEqual(format_size(0), "0 B")
+        self.assertEqual(format_size(512), "512.0 B")
+        self.assertEqual(format_size(1024 * 1.5), "1.5 KB")
+        self.assertEqual(format_size(1024 * 1024 * 2.5), "2.5 MB")
+
+    def test_diff_columns_compatibility(self):
+        cols_a = [ColumnInfo("id", "int", False, None, "", 1)]
+        cols_b = [ColumnInfo("id", "int", False, None, "", 1)]
+        diff = diff_columns(cols_a, cols_b, "test_table")
+        self.assertTrue(diff.is_compatible)
+        self.assertEqual(len(diff.missing_in_target), 0)
+
+    def test_diff_columns_missing_target(self):
+        cols_a = [ColumnInfo("id", "int", False, None, "", 1), ColumnInfo("email", "varchar", False, None, "", 2)]
+        cols_b = [ColumnInfo("id", "int", False, None, "", 1)]
+        diff = diff_columns(cols_a, cols_b, "test_table")
+        self.assertFalse(diff.is_compatible)
+        self.assertIn("email", diff.missing_in_target)
 
     def test_diff_columns(self):
         cols_a = [

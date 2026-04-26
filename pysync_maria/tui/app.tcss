@@ -72,6 +72,46 @@ Input {
     width: 1fr;
 }
 
+/* Migration Screen */
+#progress-section {
+    padding: 1 2;
+    background: $surface-darken-1;
+    border: double $primary;
+    height: auto;
+}
+
+.progress-label {
+    margin-bottom: 0;
+    text-style: bold;
+}
+
+ProgressBar {
+    margin: 0 0 1 0;
+}
+
+#stats-row {
+    height: 1;
+    margin-top: 1;
+}
+
+#stats-row Label {
+    width: 33%;
+    content-align: center middle;
+    color: $accent;
+}
+
+.log-header {
+    margin: 1 2 0 2;
+    text-style: bold;
+    color: $secondary;
+}
+
+#migration-log {
+    border: solid $secondary;
+    height: 1fr;
+    margin: 0 2 1 2;
+}
+
 .footer-label {
     margin-right: 1;
     content-align: left middle;

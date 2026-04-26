@@ -182,12 +182,13 @@ def diff_columns(cols_a: List[ColumnInfo], cols_b: List[ColumnInfo], table_name:
         type_mismatches=type_mismatches
     )
 
-def format_size(bytes_val: int) -> str:
-    """Format bytes into a human-readable string."""
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if bytes_val < 1024.0:
-            if unit == 'B':
-                return f"{int(bytes_val)} {unit}"
-            return f"{bytes_val:.1f} {unit}"
-        bytes_val /= 1024.0
-    return f"{bytes_val:.1f} PB"
+def format_size(size_bytes: int) -> str:
+    """Format bytes as human readable string."""
+    if size_bytes == 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(units) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    return f"{size_bytes:.1f} {units[i]}"
