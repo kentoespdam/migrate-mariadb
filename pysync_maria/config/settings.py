@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Optional, Type, TypeVar
-from pydantic import BaseModel, SecretStr, Field, ValidationError
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import TypeVar
+
 from dotenv import load_dotenv
-import os
+from pydantic import BaseModel, SecretStr, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 T = TypeVar("T", bound="BaseSettings")
 
@@ -31,7 +31,7 @@ class AppSettings(BaseSettings):
     batch_size: int = 5000
     dry_run: bool = False
 
-def load_app_settings(source_env: Optional[Path] = None, target_env: Optional[Path] = None) -> AppSettings:
+def load_app_settings(source_env: Path | None = None, target_env: Path | None = None) -> AppSettings:
     """
     Load settings from environment variables and optional .env files.
     To support two different .env files for source and target, we load them into the environment
@@ -40,7 +40,7 @@ def load_app_settings(source_env: Optional[Path] = None, target_env: Optional[Pa
     # Load source env file if exists
     if source_env and source_env.exists():
         load_dotenv(dotenv_path=source_env, override=True)
-    
+
     # Load target env file if exists
     if target_env and target_env.exists():
         load_dotenv(dotenv_path=target_env, override=True)

@@ -1,14 +1,16 @@
+
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Label, Button, Static
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from typing import List
+from textual.widgets import Button, Label, Static
+
 from ...db.metadata import TableInfo
+
 
 class ConfirmModal(ModalScreen[bool]):
     """Modal for migration confirmation."""
 
-    def __init__(self, tables: List[TableInfo], source_db: str, target_db: str, mode: str, dry_run: bool, batch_size: int):
+    def __init__(self, tables: list[TableInfo], source_db: str, target_db: str, mode: str, dry_run: bool, batch_size: int):
         super().__init__()
         self.tables = tables
         self.source_db = source_db
@@ -20,12 +22,12 @@ class ConfirmModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         total_rows = sum(t.row_count for t in self.tables)
         total_bytes = sum(t.data_size_bytes for t in self.tables)
-        
+
         from ...db.metadata import format_size
-        
+
         with Container(id="modal-container"):
             yield Label("⚠️ Confirm Migration", id="modal-title")
-            
+
             with Vertical(id="confirm-summary"):
                 yield Label(f"SOURCE : {self.source_db}")
                 yield Label(f"TARGET : {self.target_db}")
@@ -36,7 +38,7 @@ class ConfirmModal(ModalScreen[bool]):
                 yield Static()
                 yield Label(f"Mode   : {self.mode}")
                 yield Label(f"Batch  : {self.batch_size:,}")
-                
+
             if not self.dry_run:
                 yield Label("🚨 DRY RUN: OFF - Data will be WRITTEN to target!", classes="confirm-warning")
             else:

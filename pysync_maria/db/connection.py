@@ -1,7 +1,9 @@
-import mysql.connector
-from mysql.connector import errorcode
-from ..config.settings import HostConfig
 from contextlib import contextmanager
+
+import mysql.connector
+
+from ..config.settings import HostConfig
+
 
 class ConnectionError(Exception):
     """Custom exception for database connection issues."""
@@ -28,10 +30,10 @@ def get_connection(config: HostConfig):
         )
         if not cnx.is_connected():
             raise ConnectionError(f"Failed to connect to {config.host}")
-        
+
         # Ping to verify connection
         cnx.ping(reconnect=True, attempts=3, delay=1)
-        
+
         yield cnx
     except mysql.connector.Error as err:
         raise ConnectionError(f"MariaDB Error [{err.errno}]: {err.msg}") from err
@@ -46,6 +48,7 @@ def get_streaming_connection(config: HostConfig):
     Required for large table data migration to avoid OOM.
     """
     cnx = None
+    cursor = None
     try:
         # use_pure=True is required for SSCursor in mysql-connector-python
         cnx = mysql.connector.connect(
@@ -57,26 +60,23 @@ def get_streaming_connection(config: HostConfig):
             charset=config.charset,
             collation=config.collation,
             connect_timeout=config.connect_timeout,
-            use_pure=True 
+            use_pure=True
         )
         if not cnx.is_connected():
             raise ConnectionError(f"Failed to connect to {config.host} (Streaming)")
 
         cnx.ping(reconnect=True, attempts=3, delay=1)
-        
-        # Create SSCursor for unbuffered fetching
-        # Note: SSCursor is used at the cursor level, not connection level in some drivers,
-        # but in mysql-connector-python with use_pure=True, we use cursor(buffered=False)
-        # or specifically the SSCursor if importing it.
-        # Actually, the plan says "SSCursor".
-        from mysql.connector.cursor import SSCursor
-        cursor = cnx.cursor(cursor_class=SSCursor)
-        
+
+        cursor = cnx.cursor(buffered=False)
+
         yield cnx, cursor
-        
-        cursor.close()
+
     except mysql.connector.Error as err:
         raise ConnectionError(f"MariaDB Streaming Error [{err.errno}]: {err.msg}") from err
     finally:
+        if cursor is not None:
+            import contextlib
+            with contextlib.suppress(mysql.connector.Error):
+                cursor.close()
         if cnx and cnx.is_connected():
             cnx.close()

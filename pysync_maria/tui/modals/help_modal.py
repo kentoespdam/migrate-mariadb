@@ -1,15 +1,16 @@
 from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Label, Button, Static
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Button, Label, Static
+
 
 class HelpModal(ModalScreen):
     """Modal for displaying keyboard shortcuts."""
-    
+
     def compose(self) -> ComposeResult:
         with Container(id="modal-container"):
             yield Label("PySync-Maria: Keyboard shortcuts", id="modal-title")
-            
+
             with Vertical(id="help-content"):
                 yield Label("[bold]Global[/]")
                 yield Label("  [cyan]Q[/]       - Quit App (Confirmation)")
@@ -26,7 +27,7 @@ class HelpModal(ModalScreen):
                 yield Label("  [cyan]P[/]       - Pause / Resume")
                 yield Label("  [cyan]C[/]       - Cancel Migration")
                 yield Label("  [cyan]E[/]       - Export Migration Log")
-            
+
             with Horizontal(classes="modal-buttons"):
                 yield Button("Close", id="close-btn", variant="primary")
 

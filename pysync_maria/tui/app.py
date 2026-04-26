@@ -1,20 +1,21 @@
 import logging
-import os
 from pathlib import Path
+
 from textual.app import App
 from textual.binding import Binding
-from typing import Optional
+
 from ..config.settings import AppSettings, HostConfig
-from .screens.connection_screen import ConnectionScreen
 from .modals.help_modal import HelpModal
+from .screens.connection_screen import ConnectionScreen
 from .screens.table_select_screen import TableSelectScreen
+
 
 class PySyncMariaApp(App):
     """The main Textual application for PySync-Maria."""
-    
+
     TITLE = "PySync-Maria"
     CSS_PATH = "app.tcss"
-    
+
     SCREENS = {
         "connection": ConnectionScreen,
         "table_select": TableSelectScreen,
@@ -28,22 +29,30 @@ class PySyncMariaApp(App):
         self._setup_logging()
 
     def _setup_logging(self):
-        log_dir = Path.home() / ".pysync-maria"
+        log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
         log_file = log_dir / "pysync.log"
-        
+        error_log_file = log_dir / "error.log"
+
         logging.basicConfig(
             filename=str(log_file),
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
         )
+
+        error_handler = logging.FileHandler(str(error_log_file))
+        error_handler.setLevel(logging.ERROR)
+        error_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        error_handler.setFormatter(error_formatter)
+        logging.getLogger().addHandler(error_handler)
+
         self.logger = logging.getLogger("pysync_maria")
         self.logger.info("Application started")
 
     def on_error(self, event) -> None:
         """Global error handler."""
         self.logger.critical(f"Unhandled exception: {event.exception}", exc_info=event.exception)
-        self.notify("A critical error occurred. Check ~/.pysync-maria/pysync.log", severity="error")
+        self.notify("A critical error occurred. Check logs/error.log", severity="error")
 
     def on_mount(self) -> None:
         """Start with the connection screen."""
@@ -53,7 +62,7 @@ class PySyncMariaApp(App):
         """Global action to toggle dry run mode."""
         self.settings.dry_run = not self.settings.dry_run
         self.notify(f"Dry Run Mode: {'ON' if self.settings.dry_run else 'OFF'}")
-        
+
     def action_quit_app(self) -> None:
         """Global action to quit."""
         self.exit()
@@ -64,6 +73,6 @@ class PySyncMariaApp(App):
         Binding("f1", "help", "Help", show=True),
         Binding("question_mark", "help", "Help", show=False),
     ]
-    
+
     def action_help(self) -> None:
         self.push_screen(HelpModal())

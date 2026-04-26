@@ -1,9 +1,10 @@
-import typer
 from pathlib import Path
-from typing import Optional
-from typing_extensions import Annotated
-from .config.settings import load_app_settings, AppSettings
+from typing import Annotated
+
+import typer
 from rich.console import Console
+
+from .config.settings import load_app_settings
 
 app = typer.Typer(
     help="PySync-Maria: Interactive CLI for MariaDB-to-MariaDB data migration",
@@ -44,7 +45,7 @@ def main(
         typer.Option("--dry-run", help="Run in Dry Run mode (no data written to target)"),
     ] = False,
     version: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option("--version", help="Show application version", is_flag=True),
     ] = None,
 ):
@@ -57,7 +58,7 @@ def main(
 
     # Log parameters (simplified for now)
     # console.print(f"[bold blue]Initializing PySync-Maria...[/]")
-    
+
     try:
         # Validate env files exist
         if not source.exists():
@@ -69,7 +70,7 @@ def main(
 
         # Load settings
         settings = load_app_settings(source_env=source, target_env=target)
-        
+
         # Override batch_size and dry_run from CLI
         settings.batch_size = batch_size
         settings.dry_run = dry_run
@@ -77,9 +78,9 @@ def main(
         from .tui.app import PySyncMariaApp
         app = PySyncMariaApp(settings=settings)
         app.run()
-        
+
     except Exception as e:
-        console.print(f"[bold red]Configuration Error:[/] {str(e)}")
+        console.print(f"[bold red]Configuration Error:[/] {e!s}")
         raise typer.Exit(code=1)
 
 if __name__ == "__main__":

@@ -1,9 +1,14 @@
 import unittest
-from unittest.mock import MagicMock
+
 from pysync_maria.db.metadata import (
-    TableInfo, ColumnInfo, FKInfo, 
-    sort_tables_by_dependency, diff_columns, format_size
+    ColumnInfo,
+    FKInfo,
+    TableInfo,
+    diff_columns,
+    format_size,
+    sort_tables_by_dependency,
 )
+
 
 class TestMetadata(unittest.TestCase):
     def test_format_size(self):
@@ -36,9 +41,9 @@ class TestMetadata(unittest.TestCase):
             ColumnInfo("name", "text", True, None, "", 2), # Type mismatch
             ColumnInfo("extra", "varchar", True, None, "", 3), # Missing in source
         ]
-        
+
         diff = diff_columns(cols_a, cols_b, "test_table")
-        
+
         self.assertEqual(diff.table_name, "test_table")
         self.assertEqual(diff.missing_in_target, [])
         self.assertEqual(diff.missing_in_source, ["extra"])
@@ -56,20 +61,20 @@ class TestMetadata(unittest.TestCase):
         # B depends on A (B -> A)
         # C depends on B (C -> B)
         # Expected order: A, B, C
-        
+
         tables = [
             TableInfo("C", 0, 0, "InnoDB", None),
             TableInfo("A", 0, 0, "InnoDB", None),
             TableInfo("B", 0, 0, "InnoDB", None),
         ]
-        
+
         fks = [
             FKInfo("fk_ba", "B", "a_id", "A", "id"),
             FKInfo("fk_cb", "C", "b_id", "B", "id"),
         ]
-        
+
         sorted_tables = sort_tables_by_dependency(tables, fks)
-        
+
         names = [t.name for t in sorted_tables]
         self.assertEqual(names, ["A", "B", "C"])
 
@@ -83,7 +88,7 @@ class TestMetadata(unittest.TestCase):
             FKInfo("fk_ab", "A", "b_id", "B", "id"),
             FKInfo("fk_ba", "B", "a_id", "A", "id"),
         ]
-        
+
         sorted_tables = sort_tables_by_dependency(tables, fks)
         self.assertEqual(len(sorted_tables), 2)
         # In circular, any order is "best effort" but shouldn't crash

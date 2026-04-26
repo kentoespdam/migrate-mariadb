@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Tuple, Dict, Set
-from functools import lru_cache
-from .connection import get_connection
+
 
 @dataclass(frozen=True)
 class TableInfo:
@@ -11,7 +9,7 @@ class TableInfo:
     row_count: int
     data_size_bytes: int
     engine: str
-    create_time: Optional[datetime]
+    create_time: datetime | None
 
 @dataclass(frozen=True)
 class ColumnInfo:
@@ -19,7 +17,7 @@ class ColumnInfo:
     name: str
     data_type: str
     is_nullable: bool
-    column_default: Optional[str]
+    column_default: str | None
     extra: str
     ordinal_position: int
     is_pk: bool = False
@@ -37,10 +35,10 @@ class FKInfo:
 class SchemaDiff:
     """Represents the difference in schema between two tables."""
     table_name: str
-    missing_in_target: List[str]
-    missing_in_source: List[str]
-    type_mismatches: List[Tuple[str, str, str]]  # (col_name, source_type, target_type)
-    
+    missing_in_target: list[str]
+    missing_in_source: list[str]
+    type_mismatches: list[tuple[str, str, str]]  # (col_name, source_type, target_type)
+
     @property
     def is_compatible(self) -> bool:
         """
@@ -49,8 +47,7 @@ class SchemaDiff:
         """
         return len(self.missing_in_target) == 0
 
-@lru_cache(maxsize=128)
-def get_tables(conn, database: str) -> List[TableInfo]:
+def get_tables(conn, database: str) -> list[TableInfo]:
     """Fetch list of tables from information_schema.TABLES."""
     tables = []
     query = """
@@ -76,8 +73,7 @@ def get_tables(conn, database: str) -> List[TableInfo]:
             ))
     return tables
 
-@lru_cache(maxsize=512)
-def get_columns(conn, database: str, table: str) -> List[ColumnInfo]:
+def get_columns(conn, database: str, table: str) -> list[ColumnInfo]:
     """Fetch list of columns from information_schema.COLUMNS."""
     query = """
         SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, ORDINAL_POSITION, COLUMN_KEY
@@ -85,23 +81,22 @@ def get_columns(conn, database: str, table: str) -> List[ColumnInfo]:
         WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
         ORDER BY ORDINAL_POSITION
     """
-    with conn.cursor() as cursor:
+    with conn.cursor(dictionary=True) as cursor:
         cursor.execute(query, (database, table))
         cols = []
-        for (name, dtype, nullable, default, extra, pos, key) in cursor:
+        for row in cursor.fetchall():
             cols.append(ColumnInfo(
-                name=name,
-                data_type=dtype,
-                is_nullable=(nullable == "YES"),
-                column_default=default,
-                extra=extra,
-                ordinal_position=pos,
-                is_pk=(key == "PRI")
+                name=row['COLUMN_NAME'],
+                data_type=row['DATA_TYPE'],
+                is_nullable=(row['IS_NULLABLE'] == "YES"),
+                column_default=row['COLUMN_DEFAULT'],
+                extra=row['EXTRA'],
+                ordinal_position=row['ORDINAL_POSITION'],
+                is_pk=(row['COLUMN_KEY'] == "PRI")
             ))
     return cols
 
-@lru_cache(maxsize=128)
-def get_foreign_keys(conn, database: str) -> List[FKInfo]:
+def get_foreign_keys(conn, database: str) -> list[FKInfo]:
     """Fetch foreign key relationships from information_schema.KEY_COLUMN_USAGE."""
     fks = []
     query = """
@@ -127,13 +122,13 @@ def get_foreign_keys(conn, database: str) -> List[FKInfo]:
             ))
     return fks
 
-def sort_tables_by_dependency(tables: List[TableInfo], fks: List[FKInfo]) -> List[TableInfo]:
+def sort_tables_by_dependency(tables: list[TableInfo], fks: list[FKInfo]) -> list[TableInfo]:
     """
     Sort tables based on their dependencies (Foreign Keys).
     Uses topological sort to ensure parent tables come before child tables.
     """
     # Create adjacency list for dependencies (child -> parent)
-    adj: Dict[str, Set[str]] = {t.name: set() for t in tables}
+    adj: dict[str, set[str]] = {t.name: set() for t in tables}
     for fk in fks:
         if fk.table_name in adj and fk.referenced_table_name in adj:
             if fk.table_name != fk.referenced_table_name: # Avoid self-dependency
@@ -142,7 +137,7 @@ def sort_tables_by_dependency(tables: List[TableInfo], fks: List[FKInfo]) -> Lis
     # Topological sort
     visited = set()
     stack = []
-    
+
     def visit(table_name: str):
         if table_name in visited:
             return
@@ -158,23 +153,23 @@ def sort_tables_by_dependency(tables: List[TableInfo], fks: List[FKInfo]) -> Lis
     table_map = {t.name: t for t in tables}
     return [table_map[name] for name in stack]
 
-def diff_columns(cols_a: List[ColumnInfo], cols_b: List[ColumnInfo], table_name: str) -> SchemaDiff:
+def diff_columns(cols_a: list[ColumnInfo], cols_b: list[ColumnInfo], table_name: str) -> SchemaDiff:
     """Compare columns between source (A) and target (B)."""
     dict_a = {c.name: c for c in cols_a}
     dict_b = {c.name: c for c in cols_b}
-    
+
     set_a = set(dict_a.keys())
     set_b = set(dict_b.keys())
-    
+
     missing_in_target = sorted(list(set_a - set_b))
     missing_in_source = sorted(list(set_b - set_a))
-    
+
     type_mismatches = []
     common_cols = set_a & set_b
     for col in common_cols:
         if dict_a[col].data_type != dict_b[col].data_type:
             type_mismatches.append((col, dict_a[col].data_type, dict_b[col].data_type))
-            
+
     return SchemaDiff(
         table_name=table_name,
         missing_in_target=missing_in_target,

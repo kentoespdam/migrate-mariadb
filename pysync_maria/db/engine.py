@@ -1,10 +1,14 @@
-import time
 import logging
+import threading
+import time
+from collections.abc import Callable, Generator
+from dataclasses import dataclass, field
 from enum import Enum
-from dataclasses import dataclass
-from typing import List, Optional, Generator, Tuple, Dict, Callable, Any
+from typing import Any
+
 import mysql.connector
-from .connection import ConnectionError
+
+from ._retry import retry_with_backoff
 
 # Configure logger
 logger = logging.getLogger("pysync_maria.engine")
@@ -21,7 +25,7 @@ class BatchResult:
     rows_read: int
     rows_written: int
     elapsed_seconds: float
-    error: Optional[str] = None
+    error: str | None = None
     dry_run: bool = False
 
 @dataclass
@@ -33,138 +37,154 @@ class MigrationResult:
     failed_batches: int = 0
     elapsed_seconds: float = 0.0
     status: str = "success" # success, partial, failed
-    errors: List[str] = None
-
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    dry_run: bool = False
+    cancelled: bool = False
 
 def stream_table(
-    cursor: Any, 
-    table: str, 
-    columns: List[str], 
+    cursor: Any,
+    table: str,
+    columns: list[str],
     batch_size: int = 5000,
-    where_clause: Optional[str] = None
-) -> Generator[List[Tuple], None, None]:
+    where_clause: str | None = None
+) -> Generator[list[tuple], None, None]:
     """
-    Producer: Stream data from Host A using SSCursor.
-    Expects cursor to be an unbuffered cursor (SSCursor).
+    Producer: Stream data from Host A using buffered=False cursor.
+    Expects cursor to be an unbuffered cursor.
     """
     cols_str = ", ".join([f"`{c}`" for c in columns])
     query = f"SELECT {cols_str} FROM `{table}`"
     if where_clause:
         query += f" WHERE {where_clause}"
-    
+
     cursor.execute(query)
-    
+
     while True:
         rows = cursor.fetchmany(batch_size)
         if not rows:
             break
         yield rows
 
-def build_write_query(table: str, columns: List[str], mode: WriteMode) -> str:
+def build_write_query(table: str, columns: list[str], mode: WriteMode) -> str:
     """Build the SQL query based on the selected write mode."""
     cols_str = ", ".join([f"`{c}`" for c in columns])
     placeholders = ", ".join(["%s"] * len(columns))
-    
+
     if mode == WriteMode.REPLACE:
         return f"REPLACE INTO `{table}` ({cols_str}) VALUES ({placeholders})"
-    
+
     if mode == WriteMode.IGNORE:
         return f"INSERT IGNORE INTO `{table}` ({cols_str}) VALUES ({placeholders})"
-    
+
     if mode == WriteMode.UPDATE:
         update_part = ", ".join([f"`{c}` = VALUES(`{c}`)" for c in columns])
         return f"INSERT INTO `{table}` ({cols_str}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE {update_part}"
-    
+
     raise ValueError(f"Unsupported write mode: {mode}")
 
 def write_batch(
     cursor: Any,
     table: str,
-    rows: List[Tuple],
-    columns: List[str],
+    rows: list[tuple],
+    columns: list[str],
     mode: WriteMode,
     dry_run: bool = False
 ) -> int:
     """Consumer: Write a batch of rows to Host B."""
     if not rows:
         return 0
-        
+
     query = build_write_query(table, columns, mode)
-    
+
     if dry_run:
         logger.debug(f"[DRY RUN] Would execute: {query} with {len(rows)} rows")
         return 0
-        
+
     cursor.executemany(query, rows)
     return len(rows)
 
 def migrate_table(
-    conn_a: Any,
-    conn_b: Any,
+    src_conn: Any,
+    tgt_conn: Any,
     table: str,
-    columns_a: List[str],
-    column_map: Dict[str, Optional[str]],
+    columns_a: list[str],
+    column_map: dict[str, str | None],
     mode: WriteMode = WriteMode.REPLACE,
     batch_size: int = 5000,
     dry_run: bool = False,
-    on_batch_done: Optional[Callable[[BatchResult], None]] = None
+    on_batch_done: Callable[[BatchResult], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    pause_event: threading.Event | None = None
 ) -> MigrationResult:
     """Orchestrator: Migrate one table from source to target."""
     start_time = time.time()
-    res = MigrationResult(table_name=table)
-    
+    res = MigrationResult(table_name=table, dry_run=dry_run)
+
+    # Pre-flight validation: Check for unmapped columns
+    unmapped = [c for c in columns_a if not column_map.get(c)]
+    if unmapped:
+        msg = f"Unmapped source columns dropped for {table}: {unmapped}"
+        logger.warning(msg)
+        res.warnings.append(msg)
+
     # Resolve target columns
     target_cols = [column_map[c] for c in columns_a if column_map.get(c)]
     source_cols = [c for c in columns_a if column_map.get(c)]
-    
-    # Use the unbuffered streaming connection/cursor passed in conn_a
-    # We assume conn_a is (connection, cursor) tuple from get_streaming_connection
-    source_conn, source_cursor = conn_a
-    target_conn = conn_b
-    
+
+    # E1: SSCursor ownership - the engine now manages the unbuffered cursor lifecycle
+    # We use buffered=False for streaming large datasets (Equivalent to SSCursor in other libs)
+    src_cursor = src_conn.cursor(buffered=False)
+
     batch_num = 0
     try:
-        for batch_rows in stream_table(source_cursor, table, source_cols, batch_size):
+        for batch_rows in stream_table(src_cursor, table, source_cols, batch_size):
+            # Check for cancellation
+            if cancel_event and cancel_event.is_set():
+                res.cancelled = True
+                res.status = "failed"
+                res.errors.append("Migration cancelled by user")
+                if not dry_run:
+                    tgt_conn.rollback()
+                break
+
+            if pause_event:
+                pause_event.wait()
+
             batch_num += 1
             batch_start = time.time()
             batch_err = None
             rows_written = 0
-            
-            max_retries = 3
-            retry_count = 0
-            while retry_count <= max_retries:
-                try:
-                    with target_conn.cursor() as target_cursor:
-                        rows_written = write_batch(target_cursor, table, batch_rows, target_cols, mode, dry_run)
-                        if not dry_run:
-                            target_conn.commit()
-                        break # Success
-                except (mysql.connector.OperationalError, mysql.connector.InterfaceError) as e:
-                    retry_count += 1
-                    if retry_count > max_retries:
-                        batch_err = f"Failed after {max_retries} retries: {str(e)}"
-                        break
-                    wait_time = 2 ** retry_count
-                    logger.warning(f"Connection error in batch {batch_num}, retrying in {wait_time}s... ({retry_count}/{max_retries})")
-                    time.sleep(wait_time)
-                    # Re-ping connections
-                    try:
-                        target_conn.ping(reconnect=True)
-                    except:
-                        pass
-                except mysql.connector.Error as e:
+
+            def attempt_batch(rows=batch_rows):
+                nonlocal rows_written
+                with tgt_conn.cursor() as target_cursor:
+                    rows_written = write_batch(
+                        target_cursor, table, rows, target_cols, mode, dry_run
+                    )
                     if not dry_run:
-                        target_conn.rollback()
-                    batch_err = str(e)
-                    break
-            
+                        tgt_conn.commit()
+
+            def on_retry(count, err, b_num=batch_num):
+                logger.warning(
+                    f"Retry {count} for batch {b_num} of {table} after error: {err}"
+                )
+                try:
+                    tgt_conn.ping(reconnect=True)
+                except mysql.connector.Error as ping_err:
+                    logger.warning(f"Reconnect failed in batch {b_num}: {ping_err}")
+
+            try:
+                retry_with_backoff(attempt_batch, on_retry=on_retry)
+            except Exception as e:
+                batch_err = str(e)
+                res.failed_batches += 1
+                res.errors.append(f"Batch {batch_num}: {batch_err}")
+
             res.total_rows_read += len(batch_rows)
             res.total_rows_written += rows_written
             res.total_batches += 1
-            
+
             batch_res = BatchResult(
                 table_name=table,
                 batch_number=batch_num,
@@ -174,21 +194,32 @@ def migrate_table(
                 error=batch_err,
                 dry_run=dry_run
             )
-            
+
             if on_batch_done:
                 on_batch_done(batch_res)
 
-        if res.failed_batches == 0:
-            res.status = "success"
-        elif res.failed_batches < res.total_batches:
-            res.status = "partial"
-        else:
-            res.status = "failed"
+        if not res.cancelled:
+            if res.failed_batches == 0:
+                res.status = "success"
+            elif res.failed_batches < res.total_batches:
+                res.status = "partial"
+            else:
+                res.status = "failed"
 
     except Exception as e:
         res.status = "failed"
-        res.errors.append(f"Critical error: {str(e)}")
-        logger.critical(f"Critical error migrating {table}: {e}")
-    
+        res.errors.append(f"Critical error: {e!s}")
+        logger.exception(f"Critical error migrating {table}")
+        try:
+            if not dry_run:
+                tgt_conn.rollback()
+        except mysql.connector.Error as rb_err:
+            logger.error(f"Rollback failed for {table}: {rb_err}")
+    finally:
+        if src_cursor:
+            import contextlib
+            with contextlib.suppress(Exception):
+                src_cursor.close()
+
     res.elapsed_seconds = time.time() - start_time
     return res

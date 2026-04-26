@@ -1,13 +1,15 @@
-from typing import Dict, List, Optional
-from textual.app import ComposeResult
-from textual.screen import Screen
 from textual import work
-from ...db.metadata import get_tables, get_columns, diff_columns, format_size, TableInfo, ColumnInfo
+from textual.app import ComposeResult
+from textual.containers import Horizontal
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select
+
 from ...db.connection import get_connection
-from ..modals.mapping_modal import MappingModal
+from ...db.metadata import TableInfo, format_size, get_columns, get_tables
 from ..modals.confirm_modal import ConfirmModal
+from ..modals.mapping_modal import MappingModal
 from .migration_screen import MigrationScreen
-from textual.widgets import Header, Footer, DataTable, Label, Button, Select, Input
+
 
 class TableSelectScreen(Screen):
     """Screen for selecting tables to migrate."""
@@ -22,10 +24,10 @@ class TableSelectScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Label("Database Overview & Table Selection", id="connection-title")
-        
+
         yield Input(placeholder="Search tables (Case-insensitive)...", id="table-filter")
         yield DataTable(id="table-list")
-        
+
         with Horizontal(id="table-footer"):
             yield Label("Write Mode:", classes="footer-label")
             yield Select(
@@ -36,7 +38,7 @@ class TableSelectScreen(Screen):
             yield Label("Selected: 0 tables | Est. rows: 0", id="stats-label")
             yield Button("← Back", id="back-btn")
             yield Button("Start Migration →", variant="success", id="start-btn", disabled=True)
-            
+
         yield Footer()
 
     def on_mount(self) -> None:
@@ -46,38 +48,44 @@ class TableSelectScreen(Screen):
     def load_metadata(self) -> None:
         """Fetch metadata from both hosts in background."""
         table_list = self.query_one("#table-list", DataTable)
-        self.call_from_thread(table_list.loading, True)
-        self.call_from_thread(lambda: table_list.clear(columns=True))
-        
-        self.call_from_thread(table_list.add_columns, "✓", "Table Name", "Rows", "Size", "Schema")
+
+        # Implementation of E1: Fix widget mutation from thread
+        def prepare_list():
+            table_list.loading = True
+            table_list.clear(columns=True)
+            table_list.add_columns("✓", "Table Name", "Rows", "Size", "Schema")
+
+        self.call_from_thread(prepare_list)
 
         try:
             with get_connection(self.app.source_config) as source_conn:
                 source_tables = get_tables(source_conn, self.app.source_config.database)
-                
+
             with get_connection(self.app.target_config) as target_conn:
                 target_tables = {t.name: t for t in get_tables(target_conn, self.app.target_config.database)}
 
             self.tables_data = source_tables
-            
-            for table in source_tables:
-                # Basic diff (existence Check)
-                schema_status = "✅ Match"
-                if table.name not in target_tables:
-                    schema_status = "❌ Missing in Target"
-                
-                # In real app, we'd do full column diff here or on demand
-                row_data = [
-                    "[ ]", 
-                    table.name, 
-                    f"{table.row_count:,}", 
-                    format_size(table.data_size_bytes),
-                    schema_status
-                ]
-                self.call_from_thread(table_list.add_row, *row_data, key=table.name)
+
+            def add_tables():
+                for table in source_tables:
+                    # Basic diff (existence Check)
+                    schema_status = "✅ Match"
+                    if table.name not in target_tables:
+                        schema_status = "❌ Missing in Target"
+
+                    row_data = [
+                        "[ ]",
+                        table.name,
+                        f"{table.row_count:,}",
+                        format_size(table.data_size_bytes),
+                        schema_status
+                    ]
+                    table_list.add_row(*row_data, key=table.name)
+
+            self.call_from_thread(add_tables)
 
         except Exception as e:
-            self.notify(f"Metadata error: {str(e)}", severity="error")
+            self.notify(f"Metadata error: {e!s}", severity="error")
         finally:
             self.call_from_thread(setattr, table_list, "loading", False)
 
@@ -90,7 +98,7 @@ class TableSelectScreen(Screen):
         else:
             self.selected_tables.add(table_name)
             self.query_one("#table-list").update_cell(event.row_key, "✓", "[✓]")
-        
+
         self.update_stats()
 
     def on_input_changed(self, event: Input.Changed) -> None:
@@ -101,19 +109,19 @@ class TableSelectScreen(Screen):
     def apply_filter(self, search_text: str) -> None:
         table_list = self.query_one("#table-list", DataTable)
         table_list.clear()
-        
+
         for table in self.tables_data:
             if search_text and search_text not in table.name.lower():
                 continue
-                
+
             status = "[✓]" if table.name in self.selected_tables else "[ ]"
-            schema_status = "✅ Match" # Simplified for this view update
             # We would need to persist schema status if we wanted to be perfectly accurate here
-            
+
+
             row_data = [
-                status, 
-                table.name, 
-                f"{table.row_count:,}", 
+                status,
+                table.name,
+                f"{table.row_count:,}",
                 format_size(table.data_size_bytes),
                 "Check Table metadata" # Placeholder or store in self.tables_data
             ]
@@ -121,7 +129,7 @@ class TableSelectScreen(Screen):
         """Update the footer selection statistics."""
         num_selected = len(self.selected_tables)
         total_rows = sum(t.row_count for t in self.tables_data if t.name in self.selected_tables)
-        
+
         self.query_one("#stats-label").update(f"Selected: {num_selected} tables | Est. rows: {total_rows:,}")
         self.query_one("#start-btn").disabled = num_selected == 0
 
@@ -133,7 +141,7 @@ class TableSelectScreen(Screen):
 
     def open_confirmation(self) -> None:
         selected_table_infos = [t for t in self.tables_data if t.name in self.selected_tables]
-        
+
         self.app.push_screen(
             ConfirmModal(
                 tables=selected_table_infos,
@@ -171,20 +179,26 @@ class TableSelectScreen(Screen):
         table_list = self.query_one("#table-list", DataTable)
         if table_list.cursor_row is None:
             return
-            
+
         row_key = list(table_list.rows.keys())[table_list.cursor_row]
         table_name = str(row_key.value)
-        
+
         self.run_worker(self.fetch_and_open_mapping(table_name))
 
     async def fetch_and_open_mapping(self, table_name: str) -> None:
-        """Fetch columns and open modal."""
+        """Fetch columns and open modal (Fix for E3)."""
         try:
-            with get_connection(self.app.source_config) as s_conn:
-                s_cols = get_columns(s_conn, self.app.source_config.database, table_name)
-            with get_connection(self.app.target_config) as t_conn:
-                t_cols = get_columns(t_conn, self.app.target_config.database, table_name)
-            
+            import asyncio
+            # Wrap sync DB calls in to_thread to avoid blocking event loop
+            def fetch_cols():
+                with get_connection(self.app.source_config) as s_conn:
+                    s_cols = get_columns(s_conn, self.app.source_config.database, table_name)
+                with get_connection(self.app.target_config) as t_conn:
+                    t_cols = get_columns(t_conn, self.app.target_config.database, table_name)
+                return s_cols, t_cols
+
+            s_cols, t_cols = await asyncio.to_thread(fetch_cols)
+
             self.app.push_screen(
                 MappingModal(
                     table_name=table_name,
@@ -197,7 +211,7 @@ class TableSelectScreen(Screen):
         except Exception as e:
             self.notify(f"Mapping fetch error: {e}", severity="error")
 
-    def save_mapping(self, table_name: str, mapping: Optional[Dict]) -> None:
+    def save_mapping(self, table_name: str, mapping: dict | None) -> None:
         if mapping:
             self.table_mappings[table_name] = mapping
             self.notify(f"Mapping saved for {table_name}")
