@@ -1,4 +1,5 @@
 from textual import work
+from textual.worker import get_current_worker
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.screen import Screen
@@ -18,6 +19,7 @@ class TableSelectScreen(Screen):
         super().__init__()
         self.tables_data: list[TableInfo] = []
         self.selected_tables = set()
+        self.schema_status: dict[str, str] = {}
         self.table_mappings = {} # table_name -> dict[source_col, target_col | None]
         self.write_mode = "REPLACE"
 
@@ -47,22 +49,28 @@ class TableSelectScreen(Screen):
     @work(exclusive=True, thread=True)
     def load_metadata(self) -> None:
         """Fetch metadata from both hosts in background."""
+        worker = get_current_worker()
         table_list = self.query_one("#table-list", DataTable)
 
-        # Implementation of E1: Fix widget mutation from thread
         def prepare_list():
             table_list.loading = True
             table_list.clear(columns=True)
             table_list.add_columns("✓", "Table Name", "Rows", "Size", "Schema")
 
-        self.call_from_thread(prepare_list)
+        self.app.call_from_thread(prepare_list)
 
         try:
             with get_connection(self.app.source_config) as source_conn:
                 source_tables = get_tables(source_conn, self.app.source_config.database)
 
+            if worker.is_cancelled:
+                return
+
             with get_connection(self.app.target_config) as target_conn:
                 target_tables = {t.name: t for t in get_tables(target_conn, self.app.target_config.database)}
+
+            if worker.is_cancelled:
+                return
 
             self.tables_data = source_tables
 
@@ -73,6 +81,8 @@ class TableSelectScreen(Screen):
                     if table.name not in target_tables:
                         schema_status = "❌ Missing in Target"
 
+                    self.schema_status[table.name] = schema_status
+
                     row_data = [
                         "[ ]",
                         table.name,
@@ -82,12 +92,13 @@ class TableSelectScreen(Screen):
                     ]
                     table_list.add_row(*row_data, key=table.name)
 
-            self.call_from_thread(add_tables)
+            self.app.call_from_thread(add_tables)
 
         except Exception as e:
-            self.notify(f"Metadata error: {e!s}", severity="error")
+            self.app.call_from_thread(self.notify, f"Metadata error: {e!s}", severity="error")
+            self.app.logger.exception("load_metadata failed")
         finally:
-            self.call_from_thread(setattr, table_list, "loading", False)
+            self.app.call_from_thread(setattr, table_list, "loading", False)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Toggle selection on row click/enter."""
@@ -115,23 +126,31 @@ class TableSelectScreen(Screen):
                 continue
 
             status = "[✓]" if table.name in self.selected_tables else "[ ]"
-            # We would need to persist schema status if we wanted to be perfectly accurate here
-
+            schema = self.schema_status.get(table.name, "—")
 
             row_data = [
                 status,
                 table.name,
                 f"{table.row_count:,}",
                 format_size(table.data_size_bytes),
-                "Check Table metadata" # Placeholder or store in self.tables_data
+                schema
             ]
             table_list.add_row(*row_data, key=table.name)
+
+        self.update_stats()
+
+    def update_stats(self) -> None:
         """Update the footer selection statistics."""
         num_selected = len(self.selected_tables)
-        total_rows = sum(t.row_count for t in self.tables_data if t.name in self.selected_tables)
-
-        self.query_one("#stats-label").update(f"Selected: {num_selected} tables | Est. rows: {total_rows:,}")
-        self.query_one("#start-btn").disabled = num_selected == 0
+        total_rows = sum(
+            t.row_count
+            for t in self.tables_data
+            if t.name in self.selected_tables
+        )
+        self.query_one("#stats-label", Label).update(
+            f"Selected: {num_selected} tables | Est. rows: {total_rows:,}"
+        )
+        self.query_one("#start-btn", Button).disabled = num_selected == 0
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back-btn":
