@@ -133,6 +133,16 @@ class MigrationScreen(Screen):
             self.app.call_from_thread(self.all_done, results)
 
         except Exception as e:
+            import logging
+            from ...logging_setup import log_exception
+            log_exception(
+                logging.getLogger("pysync_maria.migration"),
+                "run_migration crashed",
+                e,
+                screen="MigrationScreen",
+                tables=[t.name for t in self.selected_tables],
+                completed=self.tables_completed,
+            )
             self.app.call_from_thread(self.log_info, f"[bold red]Critical Error: {e}[/]")
 
     def prepare_table(self, table: TableInfo, index: int) -> None:
@@ -213,6 +223,14 @@ class MigrationScreen(Screen):
 
             self.notify(f"Log exported to {file_path}")
         except Exception as e:
+            import logging
+            from ...logging_setup import log_exception
+            log_exception(
+                logging.getLogger("pysync_maria.tui.migration"),
+                "Failed to export log",
+                e,
+                file_path=str(file_path)
+            )
             self.notify(f"Failed to export log: {e}", severity="error")
 
     BINDINGS = [

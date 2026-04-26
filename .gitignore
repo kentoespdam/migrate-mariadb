@@ -4,5 +4,4 @@ __pycache__
 .env.source
 .env.target
 dummy_plan.md
-logs/error.log
-logs/pysync.log
+logs/*

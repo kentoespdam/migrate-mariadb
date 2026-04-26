@@ -114,6 +114,16 @@ class ConnectionScreen(Screen):
                 self.app.call_from_thread(commit_config)
 
         except Exception as e:
+            import logging
+            from ...logging_setup import log_exception
+            log_exception(
+                logging.getLogger("pysync_maria.connection"), 
+                "Test connection failed", 
+                e, 
+                form_id=form.id, 
+                host=form.query_one("#host", Input).value
+            )
+            
             def mark_failed():
                 if form.id == "source-form":
                     self.source_ok = False

@@ -209,7 +209,14 @@ def migrate_table(
     except Exception as e:
         res.status = "failed"
         res.errors.append(f"Critical error: {e!s}")
-        logger.exception(f"Critical error migrating {table}")
+        from ..logging_setup import log_exception
+        log_exception(
+            logger, 
+            f"Critical error migrating {table}", 
+            e, 
+            table=table,
+            batch_num=batch_num
+        )
         try:
             if not dry_run:
                 tgt_conn.rollback()

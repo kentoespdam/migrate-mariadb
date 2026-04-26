@@ -26,36 +26,20 @@ class PySyncMariaApp(App):
         self.settings = settings
         self.source_config: HostConfig = settings.source
         self.target_config: HostConfig = settings.target
-        self._setup_logging()
-
-    def _setup_logging(self):
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / "pysync.log"
-        error_log_file = log_dir / "error.log"
-
-        logging.basicConfig(
-            filename=str(log_file),
-            level=logging.INFO,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        )
-
-        error_handler = logging.FileHandler(str(error_log_file))
-        error_handler.setLevel(logging.ERROR)
-        error_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-        error_handler.setFormatter(error_formatter)
-        logging.getLogger().addHandler(error_handler)
-
         self.logger = logging.getLogger("pysync_maria")
-        self.logger.info("Application started")
 
     def on_error(self, event) -> None:
         """Global error handler."""
-        self.logger.critical(f"Unhandled exception: {event.exception}", exc_info=event.exception)
+        from ..logging_setup import log_exception
+        log_exception(self.logger, "Textual on_error", event.exception, screen=str(self.screen))
         self.notify("A critical error occurred. Check logs/error.log", severity="error")
 
     def on_mount(self) -> None:
         """Start with the connection screen."""
+        import asyncio
+        from ..logging_setup import attach_asyncio_handler
+        attach_asyncio_handler(asyncio.get_running_loop())
+        
         self.push_screen("connection")
 
     def action_toggle_dry_run(self) -> None:

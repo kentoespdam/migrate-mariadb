@@ -95,8 +95,16 @@ class TableSelectScreen(Screen):
             self.app.call_from_thread(add_tables)
 
         except Exception as e:
+            import logging
+            from ...logging_setup import log_exception
+            log_exception(
+                logging.getLogger("pysync_maria.tui.table_select"),
+                "load_metadata failed",
+                e,
+                screen="TableSelectScreen",
+                phase="load_metadata"
+            )
             self.app.call_from_thread(self.notify, f"Metadata error: {e!s}", severity="error")
-            self.app.logger.exception("load_metadata failed")
         finally:
             self.app.call_from_thread(setattr, table_list, "loading", False)
 
@@ -228,6 +236,14 @@ class TableSelectScreen(Screen):
                 callback=lambda mapping: self.save_mapping(table_name, mapping)
             )
         except Exception as e:
+            import logging
+            from ...logging_setup import log_exception
+            log_exception(
+                logging.getLogger("pysync_maria.tui.table_select"),
+                "Mapping fetch error",
+                e,
+                table=table_name
+            )
             self.notify(f"Mapping fetch error: {e}", severity="error")
 
     def save_mapping(self, table_name: str, mapping: dict | None) -> None:

@@ -36,6 +36,16 @@ def get_connection(config: HostConfig):
 
         yield cnx
     except mysql.connector.Error as err:
+        import logging
+        from ..logging_setup import log_exception
+        log_exception(
+            logging.getLogger("pysync_maria.db.connection"),
+            "MariaDB connect failed",
+            err,
+            host=config.host,
+            db=config.database,
+            streaming=False
+        )
         raise ConnectionError(f"MariaDB Error [{err.errno}]: {err.msg}") from err
     finally:
         if cnx and cnx.is_connected():
@@ -72,6 +82,16 @@ def get_streaming_connection(config: HostConfig):
         yield cnx, cursor
 
     except mysql.connector.Error as err:
+        import logging
+        from ..logging_setup import log_exception
+        log_exception(
+            logging.getLogger("pysync_maria.db.connection"),
+            "MariaDB connect failed",
+            err,
+            host=config.host,
+            db=config.database,
+            streaming=True
+        )
         raise ConnectionError(f"MariaDB Streaming Error [{err.errno}]: {err.msg}") from err
     finally:
         if cursor is not None:
