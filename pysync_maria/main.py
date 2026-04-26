@@ -74,12 +74,9 @@ def main(
         settings.batch_size = batch_size
         settings.dry_run = dry_run
 
-        console.print("[green]Configuration loaded successfully.[/]")
-        console.print(f"Source Host: [cyan]{settings.source.host}[/]")
-        console.print(f"Target Host: [cyan]{settings.target.host}[/]")
-        
-        # TODO: Phase 3 - Launch Textual TUI
-        console.print("\n[yellow]TUI implementation coming soon in Phase 3...[/]")
+        from .tui.app import PySyncMariaApp
+        app = PySyncMariaApp(settings=settings)
+        app.run()
         
     except Exception as e:
         console.print(f"[bold red]Configuration Error:[/] {str(e)}")

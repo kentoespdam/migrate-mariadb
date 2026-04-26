@@ -1,0 +1,73 @@
+Screen {
+    background: $surface;
+}
+
+#connection-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    background: $accent;
+    color: $text;
+    margin: 1 0;
+    height: 3;
+}
+
+.connection-column {
+    width: 50%;
+    padding: 1 2;
+    border: tall $secondary;
+}
+
+.column-title {
+    text-style: bold;
+    margin-bottom: 1;
+    content-align: center middle;
+}
+
+Input {
+    margin: 1 0;
+}
+
+.button-row {
+    height: 3;
+    content-align: center middle;
+    margin-top: 1;
+}
+
+#connect-btn {
+    width: 20;
+    margin-left: 2;
+}
+
+.status-label {
+    margin-top: 1;
+    content-align: center middle;
+}
+
+/* Table Select Screen */
+#table-list {
+    height: 1fr;
+    border: solid $secondary;
+}
+
+#table-footer {
+    height: 3;
+    background: $surface-darken-1;
+    padding: 0 2;
+    content-align: left middle;
+}
+
+.dry-run-badge {
+    background: $warning;
+    color: black;
+    padding: 0 1;
+    text-style: bold;
+}
+
+.schema-match { color: $success; }
+.schema-extra { color: $warning; }
+.schema-diff { color: $error; }
+
+#stats-label {
+    width: 1fr;
+}
