@@ -1,0 +1,20 @@
+[project]
+name = "pysync-maria"
+version = "0.1.0"
+description = "Interactive TUI for MariaDB-to-MariaDB data migration"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.80",
+    "rich>=13.0",
+    "mysql-connector-python==9.6.0",
+    "pydantic-settings>=2.0",
+    "typer>=0.12",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+pysync-maria = "pysync_maria.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
