@@ -43,7 +43,9 @@ class TestEngine(unittest.TestCase):
         mock_cursor = MagicMock()
         rows = [(1, "A"), (2, "B")]
 
-        written = write_batch(mock_cursor, "t1", rows, ["id", "name"], WriteMode.REPLACE, dry_run=True)
+        written = write_batch(
+            mock_cursor, "t1", rows, ["id", "name"], WriteMode.REPLACE, dry_run=True
+        )
 
         self.assertEqual(written, 0)
         mock_cursor.executemany.assert_not_called()
@@ -125,6 +127,57 @@ class TestEngine(unittest.TestCase):
 
         self.assertEqual(count, 42)
         mock_cursor.execute.assert_called_with("SELECT COUNT(*) FROM `t1`")
+
+    def test_migrate_table_dry_run(self):
+        mock_source_cursor = MagicMock()
+        mock_source_cursor.fetchmany.side_effect = [[(1, "A")], []]
+        mock_source_conn = MagicMock()
+        mock_source_conn.cursor.return_value = mock_source_cursor
+        mock_target_conn = MagicMock()
+        mock_target_cursor = MagicMock()
+        mock_target_conn.cursor.return_value.__enter__.return_value = mock_target_cursor
+
+        res = migrate_table(
+            src_conn=mock_source_conn,
+            tgt_conn=mock_target_conn,
+            table="t1",
+            columns_a=["id", "name"],
+            column_map={"id": "id", "name": "name"},
+            dry_run=True
+        )
+
+        self.assertEqual(res.status, "success")
+        self.assertEqual(res.total_rows_written, 0)
+        self.assertTrue(res.dry_run)
+        mock_target_cursor.executemany.assert_not_called()
+
+    def test_migrate_table_cancel(self):
+        import threading
+        cancel_event = threading.Event()
+
+        mock_source_cursor = MagicMock()
+        # Should stop after first batch
+        mock_source_cursor.fetchmany.side_effect = [[(1, "A")], [(2, "B")]]
+        mock_source_conn = MagicMock()
+        mock_source_conn.cursor.return_value = mock_source_cursor
+        mock_target_conn = MagicMock()
+
+        def on_batch(res):
+            cancel_event.set()
+
+        res = migrate_table(
+            src_conn=mock_source_conn,
+            tgt_conn=mock_target_conn,
+            table="t1",
+            columns_a=["id", "name"],
+            column_map={"id": "id", "name": "name"},
+            on_batch_done=on_batch,
+            cancel_event=cancel_event
+        )
+
+        self.assertEqual(res.status, "failed")
+        self.assertTrue(res.cancelled)
+        self.assertEqual(res.total_batches, 1)
 
 if __name__ == "__main__":
     unittest.main()

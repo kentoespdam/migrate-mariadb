@@ -62,7 +62,7 @@ def main(
     try:
         from .logging_setup import setup_logging
         setup_logging()
-        
+
         # Validate env files exist
         if not source.exists():
             console.print(f"[bold red]Error:[/] Source env file not found: {source}")
@@ -84,12 +84,13 @@ def main(
 
     except Exception as e:
         import logging
+
         from .logging_setup import log_exception
         log_exception(
-            logging.getLogger("pysync_maria.bootstrap"), 
-            "Failed to start app", 
-            e, 
-            source=str(source), 
+            logging.getLogger("pysync_maria.bootstrap"),
+            "Failed to start app",
+            e,
+            source=str(source),
             target=str(target)
         )
         console.print(f"[bold red]Configuration Error:[/] {e!s}")

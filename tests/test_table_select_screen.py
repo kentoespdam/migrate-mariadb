@@ -1,8 +1,11 @@
 import unittest
 from unittest.mock import MagicMock
-from pysync_maria.tui.screens.table_select_screen import TableSelectScreen
-from textual.widgets import Button, Label, DataTable
+
+from textual.widgets import Button, DataTable, Label
+
 from pysync_maria.db.metadata import TableInfo
+from pysync_maria.tui.screens.table_select_screen import TableSelectScreen
+
 
 class TestTableSelectScreen(unittest.TestCase):
     def setUp(self):
@@ -41,7 +44,7 @@ class TestTableSelectScreen(unittest.TestCase):
     def test_apply_filter(self):
         mock_table = MagicMock(spec=DataTable)
         mock_table.add_row = MagicMock()
-        
+
         def mock_query_one(selector, type):
             if selector == "#table-list":
                 return mock_table

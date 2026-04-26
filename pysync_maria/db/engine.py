@@ -79,7 +79,10 @@ def build_write_query(table: str, columns: list[str], mode: WriteMode) -> str:
 
     if mode == WriteMode.UPDATE:
         update_part = ", ".join([f"`{c}` = VALUES(`{c}`)" for c in columns])
-        return f"INSERT INTO `{table}` ({cols_str}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE {update_part}"
+        return (
+            f"INSERT INTO `{table}` ({cols_str}) VALUES ({placeholders}) "
+            f"ON DUPLICATE KEY UPDATE {update_part}"
+        )
 
     raise ValueError(f"Unsupported write mode: {mode}")
 

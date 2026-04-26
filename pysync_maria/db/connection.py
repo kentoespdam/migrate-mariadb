@@ -55,8 +55,7 @@ def get_connection(config: HostConfig):
 @contextmanager
 def get_streaming_connection(config: HostConfig):
     """
-    Unbuffered streaming connection factory.
-    The engine owns the cursor lifecycle (AD-1).
+    Streaming-capable connection. Engine owns the cursor (AD-1).
     """
     cnx = None
     try:
@@ -85,11 +84,10 @@ def get_streaming_connection(config: HostConfig):
         from ..logging_setup import log_exception
         log_exception(
             logging.getLogger("pysync_maria.db.connection"),
-            "MariaDB connect failed",
+            "MariaDB connect failed (Streaming)",
             err,
             host=config.host,
-            db=config.database,
-            streaming=True
+            db=config.database
         )
         raise ConnectionError(f"MariaDB Streaming Error [{err.errno}]: {err.msg}") from err
     finally:

@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from textual.app import App
 from textual.binding import Binding
@@ -37,9 +36,10 @@ class PySyncMariaApp(App):
     def on_mount(self) -> None:
         """Start with the connection screen."""
         import asyncio
+
         from ..logging_setup import attach_asyncio_handler
         attach_asyncio_handler(asyncio.get_running_loop())
-        
+
         self.push_screen("connection")
 
     def action_toggle_dry_run(self) -> None:

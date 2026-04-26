@@ -87,7 +87,7 @@ class MigrationScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        # Cache widget references
+        # Cache widget references (AD-3)
         self._pb_overall = self.query_one("#overall-progress", ProgressBar)
         self._pb_current = self.query_one("#current-progress", ProgressBar)
         self._lbl_speed = self.query_one("#speed-label", Label)
@@ -96,9 +96,9 @@ class MigrationScreen(Screen):
         self._lbl_current_table = self.query_one("#current-table-label", Label)
         self._log_widget = self.query_one("#migration-log", RichLog)
 
-        self.log_info(f"Starting migration for {len(self.selected_tables)} tables...")
+        self.log_info(f"Starting migration for {len(self.selected_tables)} tables\u2026")
         if self.dry_run:
-            self.log_info("[yellow]DRY RUN MODE ENABLED - No writes to target[/]")
+            self.log_info("[yellow]DRY RUN MODE ENABLED[/]")
 
         self.start_time = time.time()
         self.run_migration()
@@ -122,7 +122,7 @@ class MigrationScreen(Screen):
                     if self.cancel_event.is_set():
                         break
 
-                    # Bug #1: Get exact count for progress bar
+                    # Bug #1: Get exact count for progress bar (AD-2)
                     try:
                         exact = count_rows(src_conn, table.name)
                     except Exception:
@@ -133,7 +133,6 @@ class MigrationScreen(Screen):
                     # Get column mapping
                     table_mapping = self.mappings.get(table.name)
                     if not table_mapping:
-                        # Default mapping: identity for all source columns
                         from ...db.metadata import get_columns
 
                         cols_a_info = get_columns(
@@ -144,7 +143,6 @@ class MigrationScreen(Screen):
                     else:
                         cols_a = list(table_mapping.keys())
 
-                    # Implementation of AD-1: propagate src_conn directly
                     res = migrate_table(
                         src_conn=src_conn,
                         tgt_conn=tgt_conn,
@@ -154,9 +152,7 @@ class MigrationScreen(Screen):
                         mode=self.write_mode,
                         batch_size=self.batch_size,
                         dry_run=self.dry_run,
-                        on_batch_done=lambda b: self.app.call_from_thread(
-                            self._update_ui_batch, b
-                        ),
+                        on_batch_done=lambda b: self.app.call_from_thread(self._update_ui_batch, b),
                         cancel_event=self.cancel_event,
                         pause_event=self.pause_event,
                     )
@@ -164,7 +160,6 @@ class MigrationScreen(Screen):
                     self.app.call_from_thread(self.finish_table, res)
 
                     if res.cancelled:
-                        self.app.call_from_thread(self.log_info, "[red]Migration cancelled.[/]")
                         break
 
             self.app.call_from_thread(self.all_done, results)
@@ -173,25 +168,30 @@ class MigrationScreen(Screen):
             import logging
 
             from ...logging_setup import log_exception
-
             log_exception(
                 logging.getLogger("pysync_maria.migration"),
                 "run_migration crashed",
                 e,
-                screen="MigrationScreen",
                 tables=[t.name for t in self.selected_tables],
-                completed=self.tables_completed,
             )
             self.app.call_from_thread(self.log_info, f"[bold red]Critical Error: {e}[/]")
 
     def prepare_table(self, table: TableInfo, exact_rows: int | None, index: int) -> None:
         self.rows_completed_in_table = 0
+
+        # Adjust total_rows for more accurate overall ETA (AD-2)
+        if exact_rows is not None:
+            self.total_rows = self.total_rows - table.row_count + exact_rows
+
         self._lbl_current_table.update(f"Current Table: [bold]{table.name}[/]")
         self._pb_current.update(total=exact_rows, progress=0)
 
         # Log with best available count
         display_count = exact_rows if exact_rows is not None else table.row_count
-        self.log_info(f"▶️ Processing [cyan]{table.name}[/] ({display_count:,} rows)...")
+        self.log_info(
+            f"\u25B6\uFE0F Processing [cyan]{table.name}[/] "
+            f"({display_count:,} rows)\u2026"
+        )
 
     def _update_ui_batch(self, batch: BatchResult) -> None:
         try:
@@ -199,8 +199,7 @@ class MigrationScreen(Screen):
             self.rows_completed_in_table += batch.rows_read
 
             if self._pb_current.total is None:
-                # Textual PB: If total is None, setting progress makes it indeterminate pulse
-                # but we want to show raw numbers in label
+                # Textual PB: If total is None, setting progress makes it indeterminate pulse.
                 self._pb_current.update(progress=self.rows_completed_in_table)
             else:
                 self._pb_current.advance(batch.rows_read)
@@ -208,17 +207,16 @@ class MigrationScreen(Screen):
             elapsed = time.time() - self.start_time
             speed = self.rows_completed / elapsed if elapsed > 0 else 0
 
-            self._lbl_speed.update(f"Speed: {format(int(speed), ',')} rows/s")
+            self._lbl_speed.update(f"Speed: {int(speed):,} rows/s")
             self._lbl_elapsed.update(f"Elapsed: {timedelta(seconds=int(elapsed))!s}")
 
-            remaining_rows = max(0, self.total_rows - self.rows_completed)
-            eta = remaining_rows / speed if speed > 0 else 0
+            remaining = max(self.total_rows - self.rows_completed, 0)
+            eta = remaining / speed if speed > 0 else 0
             self._lbl_eta.update(f"ETA: {timedelta(seconds=int(eta))!s}")
         except Exception as e:
             import logging
 
             from ...logging_setup import log_exception
-
             log_exception(
                 logging.getLogger("pysync_maria.tui.migration"),
                 "UI batch update failed",
