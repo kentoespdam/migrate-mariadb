@@ -1,9 +1,9 @@
 from textual import work
-from textual.worker import get_current_worker
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select
+from textual.worker import get_current_worker
 
 from ...db.connection import get_connection
 from ...db.metadata import TableInfo, format_size, get_columns, get_tables
@@ -55,7 +55,11 @@ class TableSelectScreen(Screen):
         def prepare_list():
             table_list.loading = True
             table_list.clear(columns=True)
-            table_list.add_columns("✓", "Table Name", "Rows", "Size", "Schema")
+            table_list.add_column("✓", key="check")
+            table_list.add_column("Table Name", key="name")
+            table_list.add_column("Rows", key="rows")
+            table_list.add_column("Size", key="size")
+            table_list.add_column("Schema", key="schema")
 
         self.app.call_from_thread(prepare_list)
 
@@ -96,6 +100,7 @@ class TableSelectScreen(Screen):
 
         except Exception as e:
             import logging
+
             from ...logging_setup import log_exception
             log_exception(
                 logging.getLogger("pysync_maria.tui.table_select"),
@@ -113,10 +118,10 @@ class TableSelectScreen(Screen):
         table_name = str(event.row_key.value)
         if table_name in self.selected_tables:
             self.selected_tables.remove(table_name)
-            self.query_one("#table-list").update_cell(event.row_key, "✓", "[ ]")
+            self.query_one("#table-list").update_cell(event.row_key, "check", "[ ]")
         else:
             self.selected_tables.add(table_name)
-            self.query_one("#table-list").update_cell(event.row_key, "✓", "[✓]")
+            self.query_one("#table-list").update_cell(event.row_key, "check", "[✓]")
 
         self.update_stats()
 
@@ -237,6 +242,7 @@ class TableSelectScreen(Screen):
             )
         except Exception as e:
             import logging
+
             from ...logging_setup import log_exception
             log_exception(
                 logging.getLogger("pysync_maria.tui.table_select"),
@@ -251,7 +257,7 @@ class TableSelectScreen(Screen):
             self.table_mappings[table_name] = mapping
             self.notify(f"Mapping saved for {table_name}")
             # Update schema status in table
-            self.query_one("#table-list").update_cell(table_name, "Schema", "⚙️ Custom")
+            self.query_one("#table-list").update_cell(table_name, "schema", "⚙️ Custom")
 
     def action_toggle_selection(self) -> None:
         table_list = self.query_one("#table-list", DataTable)
@@ -265,11 +271,11 @@ class TableSelectScreen(Screen):
         if len(self.selected_tables) == len(all_keys):
             self.selected_tables.clear()
             for key in all_keys:
-                table_list.update_cell(key, "✓", "[ ]")
+                table_list.update_cell(key, "check", "[ ]")
         else:
             for key in all_keys:
                 self.selected_tables.add(str(key.value))
-                table_list.update_cell(key, "✓", "[✓]")
+                table_list.update_cell(key, "check", "[✓]")
         self.update_stats()
 
     def _toggle_row(self, row_key) -> None:
@@ -277,8 +283,8 @@ class TableSelectScreen(Screen):
         table_list = self.query_one("#table-list", DataTable)
         if table_name in self.selected_tables:
             self.selected_tables.remove(table_name)
-            table_list.update_cell(row_key, "✓", "[ ]")
+            table_list.update_cell(row_key, "check", "[ ]")
         else:
             self.selected_tables.add(table_name)
-            table_list.update_cell(row_key, "✓", "[✓]")
+            table_list.update_cell(row_key, "check", "[✓]")
         self.update_stats()

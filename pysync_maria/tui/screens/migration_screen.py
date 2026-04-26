@@ -18,6 +18,7 @@ from ...db.metadata import TableInfo
 #  - Mutasi atribut self.* (rows_completed, tables_completed) HANYA di
 #    main thread → akses lewat self.app.call_from_thread(method, ...).
 
+
 class MigrationScreen(Screen):
     """Screen for monitoring migration progress."""
 
@@ -27,7 +28,7 @@ class MigrationScreen(Screen):
         mappings: dict[str, dict],
         mode: str,
         dry_run: bool,
-        batch_size: int
+        batch_size: int,
     ):
         super().__init__()
         self.selected_tables = selected_tables
@@ -44,16 +45,20 @@ class MigrationScreen(Screen):
         # Implementation of AD-2: Cooperative cancellation & pause
         self.cancel_event = threading.Event()
         self.pause_event = threading.Event()
-        self.pause_event.set() # Set = running, Clear = paused
+        self.pause_event.set()  # Set = running, Clear = paused
 
     def compose(self) -> ComposeResult:
         yield Header()
 
         with Vertical(id="progress-section"):
             yield Label("Overall Progress", classes="progress-label")
-            yield ProgressBar(total=len(self.selected_tables), show_eta=False, id="overall-progress")
+            yield ProgressBar(
+                total=len(self.selected_tables), show_eta=False, id="overall-progress"
+            )
 
-            yield Label("Current Table Progress", id="current-table-label", classes="progress-label")
+            yield Label(
+                "Current Table Progress", id="current-table-label", classes="progress-label"
+            )
             yield ProgressBar(total=100, show_eta=True, id="current-progress")
 
             with Horizontal(id="stats-row"):
@@ -91,7 +96,6 @@ class MigrationScreen(Screen):
             # Source connection must be streaming (use_pure=True for SSCursor)
             with get_streaming_connection(self.app.source_config) as (src_conn, _):
                 with get_connection(self.app.target_config) as tgt_conn:
-
                     for i, table in enumerate(self.selected_tables):
                         if self.cancel_event.is_set():
                             break
@@ -103,7 +107,10 @@ class MigrationScreen(Screen):
                         if not table_mapping:
                             # Default mapping: identity for all source columns
                             from ...db.metadata import get_columns
-                            cols_a_info = get_columns(src_conn, self.app.source_config.database, table.name)
+
+                            cols_a_info = get_columns(
+                                src_conn, self.app.source_config.database, table.name
+                            )
                             cols_a = [c.name for c in cols_a_info]
                             table_mapping = {c: c for c in cols_a}
                         else:
@@ -119,22 +126,26 @@ class MigrationScreen(Screen):
                             mode=self.write_mode,
                             batch_size=self.batch_size,
                             dry_run=self.dry_run,
-                            on_batch_done=lambda b: self.app.call_from_thread(self._update_ui_batch, b),
+                            on_batch_done=lambda b: self.app.call_from_thread(
+                                self._update_ui_batch, b
+                            ),
                             cancel_event=self.cancel_event,
-                            pause_event=self.pause_event
+                            pause_event=self.pause_event,
                         )
                         results.append(res)
                         self.app.call_from_thread(self.finish_table, res)
 
                         if res.cancelled:
-                             self.app.call_from_thread(self.log_info, "[red]Migration cancelled.[/]")
-                             break
+                            self.app.call_from_thread(self.log_info, "[red]Migration cancelled.[/]")
+                            break
 
             self.app.call_from_thread(self.all_done, results)
 
         except Exception as e:
             import logging
+
             from ...logging_setup import log_exception
+
             log_exception(
                 logging.getLogger("pysync_maria.migration"),
                 "run_migration crashed",
@@ -173,16 +184,20 @@ class MigrationScreen(Screen):
             status_icon = "🛑"
             msg = "cancelled"
         else:
-            status_icon = "✅" if res.status == "success" else "⚠️" if res.status == "partial" else "❌"
+            status_icon = (
+                "✅" if res.status == "success" else "⚠️" if res.status == "partial" else "❌"
+            )
             msg = f"finished: {res.total_rows_written:,} rows"
 
-        self.log_info(f"{status_icon} [bold]{res.table_name}[/] {msg} in {res.elapsed_seconds:.1f}s")
+        self.log_info(
+            f"{status_icon} [bold]{res.table_name}[/] {msg} in {res.elapsed_seconds:.1f}s"
+        )
 
         if res.warnings:
             for warn in res.warnings:
                 self.log_info(f"   [yellow]Warning: {warn}[/]")
         if res.errors:
-            for err in res.errors[:5]: # Log first 5 errors
+            for err in res.errors[:5]:  # Log first 5 errors
                 self.log_info(f"   [red]Error: {err}[/]")
 
     def all_done(self, results: list[MigrationResult]) -> None:
@@ -215,7 +230,7 @@ class MigrationScreen(Screen):
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(f"Migration Log - {time.ctime()}\n")
-                f.write("="*40 + "\n")
+                f.write("=" * 40 + "\n")
                 # Iterate through lines and strip rich markup
                 for line in log_widget.lines:
                     # In Textual, RichLog.lines is a list of Strip objects
@@ -224,12 +239,14 @@ class MigrationScreen(Screen):
             self.notify(f"Log exported to {file_path}")
         except Exception as e:
             import logging
+
             from ...logging_setup import log_exception
+
             log_exception(
                 logging.getLogger("pysync_maria.tui.migration"),
                 "Failed to export log",
                 e,
-                file_path=str(file_path)
+                file_path=str(file_path),
             )
             self.notify(f"Failed to export log: {e}", severity="error")
 
