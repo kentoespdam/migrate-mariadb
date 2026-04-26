@@ -1,6 +1,6 @@
 import mysql.connector
 from mysql.connector import errorcode
-from .settings import HostConfig
+from ..config.settings import HostConfig
 from contextlib import contextmanager
 
 class ConnectionError(Exception):
