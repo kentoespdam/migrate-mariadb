@@ -157,7 +157,7 @@ class TestEngine(unittest.TestCase):
 
         mock_source_cursor = MagicMock()
         # Should stop after first batch
-        mock_source_cursor.fetchmany.side_effect = [[(1, "A")], [(2, "B")]]
+        mock_source_cursor.fetchmany.side_effect = [[(1, "A")], [(2, "B")], []]
         mock_source_conn = MagicMock()
         mock_source_conn.cursor.return_value = mock_source_cursor
         mock_target_conn = MagicMock()

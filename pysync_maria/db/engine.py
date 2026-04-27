@@ -129,7 +129,8 @@ def migrate_table(
     dry_run: bool = False,
     on_batch_done: Callable[[BatchResult], None] | None = None,
     cancel_event: threading.Event | None = None,
-    pause_event: threading.Event | None = None
+    pause_event: threading.Event | None = None,
+    queue_size: int = 2
 ) -> MigrationResult:
     """Orchestrator: Migrate one table from source to target."""
     start_time = time.time()
@@ -150,75 +151,42 @@ def migrate_table(
     # We use buffered=False for streaming large datasets (Equivalent to SSCursor in other libs)
     src_cursor = src_conn.cursor(buffered=False)
 
-    batch_num = 0
     try:
-        for batch_rows in stream_table(src_cursor, table, source_cols, batch_size):
-            # Check for cancellation
-            if cancel_event and cancel_event.is_set():
-                res.cancelled = True
-                res.status = "failed"
-                res.errors.append("Migration cancelled by user")
-                if not dry_run:
-                    tgt_conn.rollback()
-                break
+        from ..workers.pipeline import run_pipeline
 
-            if pause_event:
-                pause_event.wait()
+        read, written, batches, errors = run_pipeline(
+            src_cursor=src_cursor,
+            tgt_conn=tgt_conn,
+            table=table,
+            source_cols=source_cols,
+            target_cols=target_cols,
+            mode=mode,
+            batch_size=batch_size,
+            dry_run=dry_run,
+            on_batch_done=on_batch_done,
+            cancel_event=cancel_event,
+            pause_event=pause_event,
+            queue_size=queue_size
+        )
 
-            batch_num += 1
-            batch_start = time.time()
-            batch_err = None
-            rows_written = 0
+        res.total_rows_read = read
+        res.total_rows_written = written
+        res.total_batches = batches
+        res.errors.extend(errors)
+        res.failed_batches = len(errors)
 
-            def attempt_batch(rows=batch_rows):
-                nonlocal rows_written
-                with tgt_conn.cursor() as target_cursor:
-                    rows_written = write_batch(
-                        target_cursor, table, rows, target_cols, mode, dry_run
-                    )
-                    if not dry_run:
-                        tgt_conn.commit()
-
-            def on_retry(count, err, b_num=batch_num):
-                logger.warning(
-                    f"Retry {count} for batch {b_num} of {table} after error: {err}"
-                )
-                try:
-                    tgt_conn.ping(reconnect=True)
-                except mysql.connector.Error as ping_err:
-                    logger.warning(f"Reconnect failed in batch {b_num}: {ping_err}")
-
-            try:
-                retry_with_backoff(attempt_batch, on_retry=on_retry)
-            except Exception as e:
-                batch_err = str(e)
-                res.failed_batches += 1
-                res.errors.append(f"Batch {batch_num}: {batch_err}")
-
-            res.total_rows_read += len(batch_rows)
-            res.total_rows_written += rows_written
-            res.total_batches += 1
-
-            batch_res = BatchResult(
-                table_name=table,
-                batch_number=batch_num,
-                rows_read=len(batch_rows),
-                rows_written=rows_written,
-                elapsed_seconds=time.time() - batch_start,
-                error=batch_err,
-                dry_run=dry_run
-            )
-
-            if on_batch_done:
-                on_batch_done(batch_res)
-
-        if not res.cancelled:
-            if res.failed_batches == 0:
-                res.status = "success"
-            elif res.failed_batches < res.total_batches:
-                res.status = "partial"
-            else:
-                res.status = "failed"
+        if cancel_event and cancel_event.is_set():
+            res.cancelled = True
+            res.status = "failed"
+            res.errors.append("Migration cancelled by user")
+            if not dry_run:
+                tgt_conn.rollback()
+        elif res.failed_batches == 0:
+            res.status = "success"
+        elif res.failed_batches < res.total_batches:
+            res.status = "partial"
+        else:
+            res.status = "failed"
 
     except Exception as e:
         res.status = "failed"
@@ -228,8 +196,7 @@ def migrate_table(
             logger,
             f"Critical error migrating {table}",
             e,
-            table=table,
-            batch_num=batch_num
+            table=table
         )
         try:
             if not dry_run:
