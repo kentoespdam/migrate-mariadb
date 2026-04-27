@@ -1,8 +1,10 @@
+import contextlib
 import logging
 import queue
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import mysql.connector
 
@@ -34,7 +36,7 @@ def run_pipeline(
     q: queue.Queue = queue.Queue(maxsize=queue_size)
     producer_exc: Exception | None = None
     internal_stop = threading.Event()
-    
+
     total_rows_read = 0
     total_rows_written = 0
     total_batches = 0
@@ -49,7 +51,7 @@ def run_pipeline(
             for batch_rows in stream_table(src_cursor, table, source_cols, batch_size):
                 if is_cancelled():
                     break
-                
+
                 if pause_event:
                     # Interruptible wait for pause_event
                     while not pause_event.wait(timeout=0.1):
@@ -66,19 +68,17 @@ def run_pipeline(
                         pushed = True
                     except queue.Full:
                         continue
-                
+
                 if is_cancelled():
                     break
-                    
+
         except Exception as e:
             producer_exc = e
             logger.error(f"Producer error for {table}: {e}")
         finally:
             # Always put SENTINEL to unblock consumer unless we're sure it's already gone
-            try:
+            with contextlib.suppress(queue.Full):
                 q.put(SENTINEL, timeout=0.5)
-            except queue.Full:
-                pass
 
     prod_thread = threading.Thread(target=producer, name=f"prod-{table}", daemon=True)
     prod_thread.start()
@@ -99,7 +99,7 @@ def run_pipeline(
 
             if item is SENTINEL:
                 break
-            
+
             if is_cancelled():
                 break
 
@@ -133,7 +133,7 @@ def run_pipeline(
             except Exception as e:
                 batch_err = str(e)
                 errors.append(f"Batch {batch_num}: {batch_err}")
-            
+
             total_rows_written += rows_written_in_batch
             total_batches += 1
 
@@ -153,14 +153,14 @@ def run_pipeline(
     finally:
         # Signal cancellation to producer
         internal_stop.set()
-        
+
         # Drain queue to unblock producer if it's stuck at q.put
         while not q.empty():
             try:
                 q.get_nowait()
             except queue.Empty:
                 break
-                
+
         prod_thread.join(timeout=2.0)
         if prod_thread.is_alive():
             logger.warning(f"Producer thread for {table} did not terminate gracefully")

@@ -8,35 +8,49 @@ Screen {
     text-style: bold;
     background: $accent;
     color: $text;
-    margin: 1 0;
-    height: 3;
+    margin: 0;
+    height: 1;
 }
 
 .connection-column {
     width: 50%;
-    padding: 1 2;
-    border: tall $secondary;
+    padding: 0 2;
+    border: round $secondary;
+    overflow-y: auto;
+    height: 1fr;
 }
 
 .column-title {
     text-style: bold;
     margin-bottom: 1;
     content-align: center middle;
+    height: 1;
 }
 
 Input {
-    margin: 1 0;
+    margin: 0 0 1 0;
 }
 
 .button-row {
-    height: 3;
+    height: auto;
+    min-height: 3;
     content-align: center middle;
     margin-top: 1;
 }
 
+#connect-btn-row {
+    dock: bottom;
+    height: 3;
+    background: $surface-darken-1;
+    content-align: center middle;
+}
+
+#forms-row {
+    height: 1fr;
+}
+
 #connect-btn {
-    width: 20;
-    margin-left: 2;
+    width: 30;
 }
 
 .status-label {

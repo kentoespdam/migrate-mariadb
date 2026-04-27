@@ -1,7 +1,7 @@
 from pydantic import SecretStr
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label
 
@@ -45,11 +45,11 @@ class ConnectionScreen(Screen):
         yield Header()
         yield Label("Connection Setup", id="connection-title")
 
-        with Container(), Horizontal():
+        with Horizontal(id="forms-row"):
             yield HostConnectionForm("SOURCE (HOST A)", self.app.source_config, id="source-form")
             yield HostConnectionForm("TARGET (HOST B)", self.app.target_config, id="target-form")
 
-        with Horizontal(classes="button-row"):
+        with Horizontal(id="connect-btn-row"):
             yield Button("Connect & Proceed →", variant="success", id="connect-btn", disabled=True)
 
         yield Footer()
